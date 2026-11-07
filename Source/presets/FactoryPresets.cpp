@@ -30,7 +30,7 @@ namespace
                                             v ("revSize", 35), v ("revLowCut", 350), v ("mix", 14) } },
             { "Vocals", "Ethereal Vocal", { REV, SHM, c ("revMode", "Cloud"), v ("revDecay", 6.0f), v ("revPreDelay", 50), v ("shimPitchA", 12),
                                             v ("shimPitchB", 0), v ("shimFeedback", 35), v ("shimLevel", -12), v ("mix", 30) } },
-            { "Vocals", "60s Chamber Vocal", { REV, c ("revMode", "60s Chamber"), c ("revColor", "60s"), v ("revPreDelay", 90), v ("revDecay", 2.2f),
+            { "Vocals", "60s Chamber Vocal", { REV, c ("revMode", "Chamber"), c ("revColor", "60s"), v ("revPreDelay", 90), v ("revDecay", 2.2f),
                                                v ("revLowCut", 300), v ("mix", 22) } },
 
             // ---------------------------------------------------------------- Drums & Percussion
@@ -89,7 +89,7 @@ namespace
             // ---------------------------------------------------------------- Strings & Orchestral
             { "Strings & Orchestral", "Scoring Stage", { REV, c ("revMode", "Hall"), c ("revColor", "Now"), v ("revPreDelay", 35), v ("revDecay", 2.8f),
                                                          v ("revSize", 80), v ("revLowCut", 80), v ("revHighCut", 9500), v ("mix", 25) } },
-            { "Strings & Orchestral", "Concert Hall", { REV, c ("revMode", "90s Concert"), c ("revColor", "90s"), v ("revPreDelay", 30), v ("revDecay", 3.2f),
+            { "Strings & Orchestral", "Concert Hall", { REV, c ("revMode", "Cloud"), c ("revColor", "90s"), v ("revPreDelay", 30), v ("revDecay", 3.2f),
                                                         v ("revSize", 85), v ("mix", 28) } },
             { "Strings & Orchestral", "Chamber Strings", { REV, c ("revMode", "Chamber"), v ("revPreDelay", 20), v ("revDecay", 1.7f), v ("revSize", 55), v ("mix", 22) } },
 
@@ -105,11 +105,11 @@ namespace
                                                v ("delayHighCut", 3000), c ("revMode", "Plate"), v ("revLevel", -8), v ("mix", 40) } },
 
             // ---------------------------------------------------------------- Vintage
-            { "Vintage", "60s Echo Chamber", { REV, c ("revMode", "60s Chamber"), c ("revColor", "60s"), v ("revPreDelay", 80), v ("revDecay", 2.0f), v ("mix", 25) } },
-            { "Vintage", "60s Mirror Room", { REV, c ("revMode", "60s Mirror"), v ("revDecay", 1.6f), v ("mix", 22) } },
+            { "Vintage", "60s Echo Chamber", { REV, c ("revMode", "Chamber"), c ("revColor", "60s"), v ("revPreDelay", 80), v ("revDecay", 2.0f), v ("mix", 25) } },
+            { "Vintage", "60s Mirror Room", { REV, c ("revMode", "Room"), c ("revColor", "60s"), v ("revDecay", 1.6f), v ("mix", 22) } },
             { "Vintage", "70s Studio Plate", { REV, c ("revMode", "Plate"), c ("revColor", "70s"), v ("revDecay", 2.4f), v ("revPreDelay", 30), v ("mix", 25) } },
             { "Vintage", "80s Digital Hall", { REV, c ("revMode", "Hall"), c ("revColor", "80s"), v ("revDecay", 3.0f), v ("revModDepth", 50), v ("mix", 28) } },
-            { "Vintage", "90s Random Hall", { REV, c ("revMode", "90s Hall"), c ("revColor", "90s"), v ("revDecay", 2.8f), v ("revSize", 75), v ("mix", 26) } },
+            { "Vintage", "90s Random Hall", { REV, c ("revMode", "Hall"), c ("revColor", "90s"), v ("revDecay", 2.8f), v ("revSize", 75), v ("mix", 26) } },
 
             // ---------------------------------------------------------------- Send (100 % wet, for aux tracks)
             { "Send (100% Wet)", "Send: Vocal Plate", { REV, c ("revMode", "Plate"), v ("revPreDelay", 40), v ("revDecay", 1.8f), v ("revLowCut", 250), v ("mix", 100) } },

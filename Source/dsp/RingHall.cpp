@@ -121,7 +121,6 @@ void RingHall::process (float* left, float* right, int numSamples, const ReverbP
     const float lfoInc = lumen::twoPi * rate * 0.6f / sampleRate;
 
     const float preSamples = juce::jmax (1.0f, p.preDelayMs * 0.001f * sampleRate);
-    const float glide = 1.0f - std::exp (-1.0f / (0.2f * sampleRate));
     const float apGain = voice.allpassGain;
     constexpr float tapNorm = 0.31f;
 
@@ -143,9 +142,10 @@ void RingHall::process (float* left, float* right, int numSamples, const ReverbP
 
         for (int i = 0; i < numSections; ++i)
         {
-            smoothedLen[i] += glide * (targetLen[i] - smoothedLen[i]);
-            smoothedAp[i] += glide * (targetAp[i] - smoothedAp[i]);
-            smoothedInner[i] += glide * (targetInner[i] - smoothedInner[i]);
+            // Size changes are crossfaded by ReverbEngine, never glided (a gliding delay bends the pitch).
+            smoothedLen[i] = targetLen[i];
+            smoothedAp[i] = targetAp[i];
+            smoothedInner[i] = targetInner[i];
             lfoPhase[i] += lfoInc * (0.91f + 0.04f * (float) i);
             if (lfoPhase[i] > lumen::twoPi) lfoPhase[i] -= lumen::twoPi;
             const float random = drift[i].next (rate * (0.85f + 0.06f * (float) i), sampleRate);

@@ -103,11 +103,13 @@ static int measure()
 {
     constexpr double sr = 48000.0;
     constexpr int block = 256;
-    for (int m : { 0, 1, 3, 6, 7, 8, 9 })
+    // (mode, era): Hall, Plate and Chamber clean, plus the 60s chamber/room and 90s hall/cloud algorithms.
+    const std::pair<int, int> combos[] = { { 0, 4 }, { 1, 4 }, { 3, 4 }, { 3, 0 }, { 2, 0 }, { 0, 3 }, { 5, 3 } };
+    for (auto [m, e] : combos)
         for (float decay : { 1.0f, 2.0f, 5.0f })
         {
             Host h;
-            set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, 0.0f); set (h, ParamID::revDecay, decay);
+            set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, (float) e); set (h, ParamID::revDecay, decay);
             set (h, ParamID::revPreDelay, 0.0f); set (h, ParamID::revLowCut, 20.0f);
             Router r; r.attach (h.apvts); r.setTempo (120.0); r.prepare ({ sr, (juce::uint32) block, 2 });
             const int total = (int) ((decay * 2.0f + 1.0f) * sr);
@@ -121,7 +123,7 @@ static int measure()
                 r.process (v, { Router::Mode::Serial, false, false, true });
                 for (int ch = 0; ch < 2; ++ch) out.copyFrom (ch, pos, v, ch, 0, n);
             }
-            char wn[64]; std::snprintf (wn, sizeof wn, "ir_m%d_t%d.wav", m, (int) decay);
+            char wn[64]; std::snprintf (wn, sizeof wn, "ir_m%d_e%d_t%d.wav", m, e, (int) decay);
             juce::File f = juce::File::getCurrentWorkingDirectory().getChildFile (wn);
             f.deleteFile();
             juce::WavAudioFormat wav;
@@ -132,9 +134,9 @@ static int measure()
                     w->writeFromAudioSampleBuffer (out, 0, total);
                 }
         }
-    for (int m = 0; m < 10; ++m)
+    for (auto [m, e] : combos)
     {
-        Host h; set (h, ParamID::revMode, (float) m);
+        Host h; set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, (float) e);
         Router r; r.attach (h.apvts); r.setTempo (120.0); r.prepare ({ sr, (juce::uint32) block, 2 });
         juce::AudioBuffer<float> b (2, block);
         juce::Random rnd (2);
@@ -147,7 +149,7 @@ static int measure()
                     b.setSample (ch, k, (rnd.nextFloat() - 0.5f) * 0.3f);
             r.process (b, { Router::Mode::Serial, false, false, true });
         }
-        std::printf ("cpu mode %d: %.2f%% of one core\n", m, (juce::Time::getMillisecondCounterHiRes() - start) / 10000.0 * 100.0);
+        std::printf ("cpu mode %d era %d: %.2f%% of one core\n", m, e, (juce::Time::getMillisecondCounterHiRes() - start) / 10000.0 * 100.0);
     }
     return 0;
 }
@@ -198,43 +200,99 @@ int main (int argc, char** argv)
         Host h; set (h, ParamID::shimFeedback, 100.0f); set (h, ParamID::shimDensity, 100.0f);
         check ("shimmer fb 100%", render (h, { M::Serial, false, true, false }, "shimfb.wav", 12.0f), false);
     }
+    static const char* eraNames[] = { "60s", "70s", "80s", "90s", "Now" };
     for (int m = 0; m < 6; ++m)
-        for (int c = 0; c < 5; ++c)
+        for (int e = 0; e < 5; ++e)
         {
-            Host h; set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, (float) c);
-            char nm[64]; std::snprintf (nm, sizeof nm, "reverb mode %d color %d", m, c);
-            char wn[64]; std::snprintf (wn, sizeof wn, "reverb_m%d_c%d.wav", m, c);
-            check (nm, render (h, { M::Serial, false, false, true }, (c == 0 || c >= 3) ? wn : "tmp.wav"), true);
+            Host h; set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, (float) e);
+            char nm[64]; std::snprintf (nm, sizeof nm, "reverb mode %d era %s", m, eraNames[e]);
+            char wn[64]; std::snprintf (wn, sizeof wn, "reverb_m%d_e%d.wav", m, e);
+            check (nm, render (h, { M::Serial, false, false, true }, wn), true);
         }
-    for (int m = 6; m < 10; ++m)
+    // Extremes of every control, on every algorithm: FDN, 60s chamber/room, 90s hall/cloud.
+    for (auto [m, e] : { std::pair<int, int> { 0, 4 }, { 4, 1 }, { 1, 2 }, { 3, 0 }, { 2, 0 }, { 0, 3 }, { 5, 3 } })
     {
-        Host h; set (h, ParamID::revMode, (float) m);
-        char nm[64]; std::snprintf (nm, sizeof nm, "era reverb mode %d", m);
-        char wn[64]; std::snprintf (wn, sizeof wn, "reverb_m%d_c0.wav", m);
-        check (nm, render (h, { M::Serial, false, false, true }, wn), true);
-        // Extremes of every control that changes the algorithm's behaviour.
+        Host h; set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, (float) e);
+        char nm[64];
         set (h, ParamID::revDecay, 20.0f); set (h, ParamID::revSize, 100.0f); set (h, ParamID::revDiffusion, 100.0f);
         set (h, ParamID::revModDepth, 100.0f); set (h, ParamID::revModRate, 5.0f); set (h, ParamID::revPreDelay, 500.0f);
-        std::snprintf (nm, sizeof nm, "era mode %d all max", m);
+        std::snprintf (nm, sizeof nm, "mode %d era %s all max", m, eraNames[e]);
         check (nm, render (h, { M::Serial, false, false, true }, "tmp.wav", 15.0f), true);
         set (h, ParamID::revDecay, 0.2f); set (h, ParamID::revSize, 0.0f); set (h, ParamID::revDiffusion, 0.0f);
         set (h, ParamID::revModDepth, 0.0f); set (h, ParamID::revPreDelay, 0.0f); set (h, ParamID::revHighCut, 1000.0f);
         set (h, ParamID::revLowCut, 2000.0f);
-        std::snprintf (nm, sizeof nm, "era mode %d all min", m);
+        std::snprintf (nm, sizeof nm, "mode %d era %s all min", m, eraNames[e]);
         check (nm, render (h, { M::Serial, false, false, true }, "tmp.wav"), false);
     }
     {
-        // Walk through every mode while audio plays, including across the algorithm crossfades.
+        // Walk through every mode and era while audio plays, including across the algorithm crossfades.
         Host h;
-        check ("mode changes while playing", render (h, { M::Serial, false, false, true }, "mode_walk.wav", 6.0f, 256,
-               [&h] (double t) { set (h, ParamID::revMode, (float) ((int) (t * 8.0) % 10)); }), false);
+        check ("mode/era changes while playing", render (h, { M::Serial, false, false, true }, "mode_walk.wav", 6.0f, 256,
+               [&h] (double t) { const int k = (int) (t * 8.0); set (h, ParamID::revMode, (float) (k % 6)); set (h, ParamID::revColor, (float) ((k / 2) % 5)); }), false);
+        Host h2;
+        check ("size/pre-delay sweeps while playing", render (h2, { M::Serial, false, false, true }, "tmp.wav", 6.0f, 256,
+               [&h2] (double t) { set (h2, ParamID::revSize, (float) (50.0 + 50.0 * std::sin (t * 3.0))); set (h2, ParamID::revPreDelay, (float) (100.0 + 90.0 * std::sin (t * 2.0))); }), false);
     }
     {
-        Host h; set (h, ParamID::revMode, 6.0f); set (h, ParamID::crossFeed, 100.0f); set (h, ParamID::revDecay, 20.0f);
+        Host h; set (h, ParamID::revMode, 3.0f); set (h, ParamID::revColor, 0.0f); set (h, ParamID::crossFeed, 100.0f); set (h, ParamID::revDecay, 20.0f);
         set (h, ParamID::delayFeedback, 110.0f);
         check ("60s worst case cross-feed", render (h, { M::Serial, true, true, true }, "tmp.wav", 15.0f, 64), true);
-        set (h, ParamID::revMode, 8.0f);
+        set (h, ParamID::revMode, 0.0f); set (h, ParamID::revColor, 3.0f);
         check ("90s worst case cross-feed", render (h, { M::Serial, true, true, true }, "tmp.wav", 15.0f, 64), true);
+    }
+    {
+        // Size must not bend the pitch: a steady 1 kHz sine, Size swept from 0 to 100 % in 1.5 s.
+        // Nearly all of the output's energy has to stay within a semitone of 1 kHz (a gliding delay smears it far away).
+        const double sr = 48000.0; constexpr int order = 15; const int fftN = 1 << order; const int block = 256;
+        juce::dsp::FFT fft (order);
+        juce::dsp::WindowingFunction<float> window ((size_t) fftN, juce::dsp::WindowingFunction<float>::hann);
+        float worst = 1.0f; int worstM = 0, worstE = 0;
+        for (auto [m, e] : { std::pair<int, int> { 0, 4 }, { 5, 4 }, { 1, 2 }, { 3, 0 }, { 0, 3 }, { 5, 3 } })
+        {
+            Host h; set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, (float) e); set (h, ParamID::revDecay, 4.0f);
+            set (h, ParamID::revModDepth, 0.0f); set (h, ParamID::revSize, 0.0f);
+            Router r; r.attach (h.apvts); r.setTempo (120.0); r.prepare ({ sr, (juce::uint32) block, 2 });
+            const int total = (int) (2.0 * sr) + fftN;
+            std::vector<float> out ((size_t) total);
+            juce::AudioBuffer<float> b (2, block);
+            for (int pos = 0; pos + block <= total; pos += block)
+            {
+                const double t = (double) pos / sr;
+                if (t > 2.0 && ! std::getenv ("LUMEN_NOSWEEP")) set (h, ParamID::revSize, (float) juce::jlimit (0.0, 100.0, (t - 2.0) / 1.5 * 100.0));
+                for (int k = 0; k < block; ++k)
+                {
+                    const float x = 0.3f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 1000.0 * (pos + k) / sr);
+                    b.setSample (0, k, x); b.setSample (1, k, x);
+                }
+                r.process (b, { M::Serial, false, false, true });
+                for (int k = 0; k < block; ++k) out[(size_t) (pos + k)] = b.getSample (0, k);
+            }
+            if (std::getenv ("LUMEN_SWEEPRAW"))
+            {
+                char fn[64]; std::snprintf (fn, sizeof fn, "sweep_m%d_e%d.raw", m, e);
+                juce::File (juce::File::getCurrentWorkingDirectory().getChildFile (fn)).replaceWithData (out.data(), out.size() * sizeof (float));
+            }
+            std::vector<float> data ((size_t) fftN * 2, 0.0f);
+            for (int i = 0; i < fftN; ++i) data[(size_t) i] = out[(size_t) (total - fftN + i)];
+            window.multiplyWithWindowingTable (data.data(), (size_t) fftN);
+            fft.performFrequencyOnlyForwardTransform (data.data());
+            const float binHz = (float) sr / (float) fftN;
+            double inBand = 0, all = 0;
+            // Only look around 1 kHz (250 Hz to 4 kHz): a bent pitch lands there, while the 80s converter's
+            // intended images sit far above.
+            for (int k = (int) (250.0f / binHz); k < (int) (4000.0f / binHz); ++k)
+            {
+                const double e2 = (double) data[(size_t) k] * data[(size_t) k];
+                all += e2;
+                if (std::abs ((float) k * binHz - 1000.0f) < 60.0f) inBand += e2;   // within a semitone
+            }
+            const float frac = (float) (inBand / juce::jmax (1.0e-20, all));
+            if (std::getenv ("LUMEN_VERBOSE")) std::printf ("   size sweep mode %d era %d: %.2f%%\n", m, e, frac * 100.0f);
+            if (frac < worst) { worst = frac; worstM = m; worstE = e; }
+        }
+        const bool ok = worst > 0.97f;
+        std::printf ("%-28s worst %.1f%% of energy at 1 kHz (mode %d era %d)  %s\n", "size sweep pitch", worst * 100.0f, worstM, worstE, ok ? "OK" : "FAIL");
+        if (! ok) ++failures;
     }
     {
         Host h; set (h, ParamID::revDecay, 20.0f); set (h, ParamID::revSize, 100.0f); set (h, ParamID::revMode, 5.0f);

@@ -57,18 +57,19 @@ A granular pitch shifter in a feedback loop, for octave-up halos and evolving te
 
 ## Reverb
 
-An algorithmic reverb with ten modes and five era colors.
+An algorithmic reverb: six types of space, each available in five eras.
 
 - Decay: how long the tail lasts (RT60), from 0.2 to 20 seconds.
-- Size: the size of the space. Larger sizes spread the early reflections and slow the build-up.
+- Size: the size of the space. Larger sizes spread the early reflections and slow the build-up. Changing Size never bends the pitch: Lumen starts the new space and lets the previous tail ring out.
 - Pre-Delay: time before the reverb starts. 20 to 80 ms keeps vocals and drums clear in front of the space.
 - Level: output level of the reverb.
-- Mode: Hall, Plate, Room, Chamber, Bloom (slow swell), Cloud (dense, diffuse wash), and four vintage studio models:
-- 60s Chamber: a tiled echo chamber fed by a tape delay and a speaker and picked up by a microphone pair. Warm and dense in the low mids.
-- 60s Mirror: a smaller chamber with hard, reflective walls. Brighter, with more flutter.
-- 90s Hall: a modern digital hall with randomised, constantly moving delay lines for a smooth, lush tail.
-- 90s Concert: the same algorithm with slower, chorus-like movement, a slower build and more bass.
-- Color: the era voicing for the first six modes. Now is clean and full-range, 80s adds the grainy, band-limited sound of early digital units, 70s is darker and softer, 60s adds chamber-like midrange and saturation, and 90s adds random modulation and a fuller low end. The four vintage modes have their own voicing, so Color is disabled for them.
+- Mode: the type of space. Hall, Plate, Room, Chamber, Bloom (slow swell) or Cloud (dense, diffuse wash).
+- Era: voices the chosen mode after the studio reverbs of each decade. Every era works with every mode.
+- 60s: a console send into tape and a physical space. Band-limited, gently saturated and mid-forward, with no movement. Chamber becomes a tiled echo chamber fed by a tape delay, a speaker and a microphone pair, and Room becomes a small chamber with hard, reflective walls.
+- 70s: analog plates and the first digital units. Dark and soft on top, grainy, with sparser diffusion and slow movement.
+- 80s: the classic digital halls. Bright but band-limited, with the grit of 12-bit, reduced-rate converters and a strong chorus-like movement.
+- 90s: later digital halls. Smooth random movement on every line, lush diffusion, a longer bass decay and an open top end. Hall and Cloud switch to a dedicated random-hall algorithm (Cloud with a slower, concert-hall voice).
+- Now: clean, full range and transparent, with gentle movement.
 - Advanced: Diffusion (how quickly echoes blur into a tail), Mod Rate and Mod Depth (movement that avoids metallic ringing), Low-Cut and High-Cut (shape the tail), Width (from mono to full stereo).
 
 ## Output

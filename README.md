@@ -5,7 +5,7 @@ Reverb, delay and granular shimmer plugin by Raz Burg AudioCrafts. JUCE 8, C++20
 ## Features
 
 - Delay, Shimmer and Reverb engines in Serial, Parallel or Reverb > Delay routing, with Cross-Feed.
-- Reverb modes: Hall, Plate, Room, Chamber, Bloom, Cloud, 60s Chamber, 60s Mirror, 90s Hall, 90s Concert; era Color for the first six.
+- Reverb: six modes (Hall, Plate, Room, Chamber, Bloom, Cloud) x five eras (60s, 70s, 80s, 90s, Now). Size, Mode, Era and Pre-Delay changes hand over to a fresh reverb while the old tail rings out, so the pitch never bends.
 - Coloration (Dark to Shine) on the output, alias-free (2x oversampled harmonic path).
 - Opens fully dry, Undo/Redo (100 steps), Reset, 47 factory presets in 9 categories, built-in user guide (`Resources/Manual.md`).
 
@@ -40,6 +40,6 @@ Source/
   Parameters.*        every parameter
   gui/                look and feel, widgets, display, sections, activation panel
   licensing/          Lemon Squeezy licence keys, trial, offline grace
-  dsp/                DelayEngine, ShimmerEngine, ReverbEngine, ChamberReverb, RingHall, Coloration, Router
+  dsp/                DelayEngine, ShimmerEngine, ReverbEngine (FdnReverb, ChamberReverb, RingHall), Coloration, Router
 test/                 offline render test (all engines and modes); `RenderTest measure` and analyse_ir.py measure decay, density, ringing and stereo
 ```

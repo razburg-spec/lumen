@@ -64,7 +64,6 @@ class ReverbSection : public EngineSection
 {
 public:
     explicit ReverbSection (APVTS&);
-    void poll() override;
 };
 
 // Global output column: Mix, Cross-Feed and Output.

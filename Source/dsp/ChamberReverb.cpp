@@ -168,7 +168,6 @@ void ChamberReverb::process (float* left, float* right, int numSamples, const Re
 
     // A real room does not move: only a trace of drift, to stop modes outliving each other.
     const float driftRange = 0.00022f * sampleRate;
-    const float lenGlide = 1.0f - std::exp (-1.0f / (0.2f * sampleRate));
     const float tapScale = scale * 0.001f * sampleRate;
 
     level.setTargetValue (p.levelGain);
@@ -205,7 +204,7 @@ void ChamberReverb::process (float* left, float* right, int numSamples, const Re
         float out[numLines], mixed[numLines];
         for (int i = 0; i < numLines; ++i)
         {
-            smoothedLen[i] += lenGlide * (targetLen[i] - smoothedLen[i]);
+            smoothedLen[i] = targetLen[i];   // Size changes are crossfaded by ReverbEngine, never glided
             out[i] = lines[i].readCubic (smoothedLen[i] + drift[i].next (0.31f + 0.02f * (float) i, sampleRate) * driftRange);
             mixed[i] = decay[i].process (out[i]);
         }

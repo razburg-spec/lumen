@@ -41,8 +41,8 @@ namespace ParamID
 
     // Reverb
     inline constexpr auto revOn        = "revOn";
-    inline constexpr auto revMode      = "revMode";        // Hall, Plate, Room, Chamber, Bloom, Cloud, 60s Chamber, 60s Mirror, 90s Hall, 90s Concert
-    inline constexpr auto revColor     = "revColor";       // Now / 80s / 70s / 60s / 90s (modes 0-5 only)
+    inline constexpr auto revMode      = "revMode";        // Hall / Plate / Room / Chamber / Bloom / Cloud
+    inline constexpr auto revColor     = "revColor";       // Era: 60s / 70s / 80s / 90s / Now (applies to every mode)
     inline constexpr auto revPreDelay  = "revPreDelay";
     inline constexpr auto revDecay     = "revDecay";
     inline constexpr auto revSize      = "revSize";

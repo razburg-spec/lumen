@@ -72,7 +72,7 @@ void Router::pullParameters()
 
     ReverbEngine::Params r;
     r.mode = (int) rMode.get (0.0f);
-    r.color = (int) rColor.get (1.0f);
+    r.era = (int) rColor.get (4.0f);
     r.preDelayMs = rPre.get (20.0f);
     r.decaySeconds = rDecay.get (2.5f);
     r.size = rSize.get (60.0f) / 100.0f;

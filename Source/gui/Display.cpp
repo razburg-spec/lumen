@@ -70,9 +70,9 @@ float Display::reverbLevelAt (float t) const
         return -200.0f;
 
     const auto tt = t - preDelay;
-    const auto mode = juce::roundToInt (get (revMode));   // Hall, Plate, Room, Chamber, Bloom, Cloud, 60s Chamber, 60s Mirror, 90s Hall, 90s Concert
-    static constexpr float attackFraction[] = { 0.012f, 0.004f, 0.004f, 0.006f, 0.20f, 0.09f, 0.006f, 0.004f, 0.012f, 0.04f };
-    const auto attack = juce::jmax (0.002f, decay * attackFraction[juce::jlimit (0, 9, mode)]);
+    const auto mode = juce::roundToInt (get (revMode));   // Hall, Plate, Room, Chamber, Bloom, Cloud
+    static constexpr float attackFraction[] = { 0.012f, 0.004f, 0.004f, 0.006f, 0.20f, 0.09f };
+    const auto attack = juce::jmax (0.002f, decay * attackFraction[juce::jlimit (0, 5, mode)]);
     const auto attackGain = 1.0f - std::exp (-tt / attack);
     return -60.0f * tt / decay + juce::Decibels::gainToDecibels (attackGain, -200.0f);
 }
@@ -194,7 +194,7 @@ void Display::paint (juce::Graphics& g)
 
         // Early reflections for the rooms that have a distinct first bounce.
         const auto mode = juce::roundToInt (get (revMode));
-        if (mode == 0 || mode == 2 || mode == 3 || mode == 6 || mode == 7)
+        if (mode == 0 || mode == 2 || mode == 3)
         {
             juce::Random rng (11 + mode);
             const auto spread = 0.02f + 0.08f * get (revSize) / 100.0f;

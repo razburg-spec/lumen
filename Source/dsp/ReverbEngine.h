@@ -1,14 +1,42 @@
 #pragma once
 #include "DspUtils.h"
 #include "ReverbParams.h"
+#include "FdnReverb.h"
 #include "ChamberReverb.h"
 #include "RingHall.h"
-#include <array>
 
-// Algorithmic reverb: an 8-line feedback delay network with input diffusion,
-// modulated lines, per-line damping and six modes (Hall, Plate, Room, Chamber, Bloom, Cloud)
-// plus five era colors (Now, 80s, 70s, 60s echo chamber, 90s modern digital). Modes 6 and 7 hand over
-// to ChamberReverb (60s rooms), modes 8 and 9 to RingHall (90s halls); changing algorithm crossfades.
+// One complete reverb: picks the algorithm for the Mode and Era, and crossfades when that changes.
+//   60s Chamber -> ChamberReverb (tiled echo chamber), 60s Room -> ChamberReverb (mirror room)
+//   90s Hall    -> RingHall (random hall), 90s Cloud -> RingHall (concert voice)
+//   everything else -> FdnReverb with the era's voicing.
+class ReverbCore
+{
+public:
+    void prepare (const juce::dsp::ProcessSpec&);
+    void reset (const ReverbParams&);
+    void process (juce::AudioBuffer<float>&, const ReverbParams&);
+
+private:
+    enum class Kind { Fdn, Chamber, Ring };
+    static Kind kindFor (const ReverbParams&);
+    static int variantFor (const ReverbParams&);
+    void processKind (Kind, juce::AudioBuffer<float>&, const ReverbParams&, int variant);
+    void resetKind (Kind, const ReverbParams&);
+
+    FdnReverb fdn;
+    ChamberReverb chamber;
+    RingHall ring;
+    Kind activeKind = Kind::Fdn, fadingKind = Kind::Fdn;
+    int activeVariant = 0, fadingVariant = 0;
+    int fadeLeft = 0, fadeLength = 1;
+    juce::AudioBuffer<float> fadeBuffer;
+};
+
+// The reverb engine. Size, Mode, Era and Pre-Delay never move a delay line while sound is in it
+// (that bends the pitch, like a tape changing speed). Instead a change starts a fresh reverb with the
+// new settings, which takes over the input, while the previous one stops receiving input and rings out
+// naturally at its old settings. The two tails overlap, so there is no pitch change and no level dip.
+// A small pool of reverbs covers a knob that keeps moving.
 // Contract shared by all engines: process() replaces the buffer contents with this engine's wet signal.
 class ReverbEngine
 {
@@ -17,60 +45,40 @@ public:
 
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();
-    void setParams (const Params& p) { params = p; }
+    void setParams (const Params& p) { requested = p; }
     void process (juce::AudioBuffer<float>& buffer);
 
 private:
-    enum class Kind { Fdn, Chamber, Ring };
-    static Kind kindFor (int mode) { return mode >= 8 ? Kind::Ring : (mode >= 6 ? Kind::Chamber : Kind::Fdn); }
-    void processKind (Kind, juce::AudioBuffer<float>&);
-    void resetKind (Kind);
-    void processFdn (juce::AudioBuffer<float>&);
-    void resetFdn();
-
-    ChamberReverb chamber;
-    RingHall ring;
-    Kind activeKind = Kind::Fdn, fadingKind = Kind::Fdn;
-    int fadeLeft = 0, fadeLength = 1;
-    int chamberVariant = 0, ringVariant = 0;
-    juce::AudioBuffer<float> fadeBuffer;
-
-    static constexpr int numLines = 8;
-    static constexpr int numDiffusers = 4;
-    static constexpr int numBloom = 4;
-    static constexpr int numEarly = 6;
-
-    struct ModeShape
+    struct Structure
     {
-        float minMs, maxMs;          // FDN line lengths at size = 1
-        float diffusionScale;        // multiplies the Diffusion control
-        float modScale;              // multiplies the Mod Depth control
-        float earlyLevel;            // early reflections amount
-        float earlyMs;               // early reflection spread
-        float bloom;                 // 0..1 slow-attack diffuser chain amount
-        float damping;               // extra high damping factor
+        int mode = 0, era = 4;
+        float size = 0.6f, preDelayMs = 20.0f;
+        bool differs (const Structure& o) const
+        {
+            return mode != o.mode || era != o.era || std::abs (size - o.size) > 0.004f || std::abs (preDelayMs - o.preDelayMs) > 0.5f;
+        }
     };
-    static ModeShape shapeFor (int mode);
+    static Structure structureOf (const Params& p) { return { p.mode, p.era, p.size, p.preDelayMs }; }
+    Params withStructure (const Structure&) const;
 
-    Params params;
-    float sampleRate = 44100.0f;
+    enum class State { free, active, ringing, dying };
+    static constexpr int poolSize = 6;
+    struct Slot
+    {
+        ReverbCore core;
+        Structure structure;
+        State state = State::free;
+        float inputGain = 0.0f;      // ramps to 1 when active, to 0 when ringing
+        float outputGain = 1.0f;     // ramps to 0 when dying
+        int quietBlocks = 0;
+        juce::int64 since = 0;       // when it stopped being active
+    };
 
-    lumen::DelayLine preDelay;
-    lumen::DelayLine early;
-    lumen::Allpass diffuser[2][numDiffusers];
-    lumen::Allpass bloomChain[2][numBloom];
-    lumen::DelayLine lines[numLines];
-    lumen::OnePole damp[numLines], lowDamp[numLines];
-    lumen::OnePole inHi[2], inLo[2], outTone[2];
-    float lfoPhase[numLines] {};
-    float lineState[numLines] {};
-    float smoothedLen[numLines] {};
-    // 60s: send EQ, tape-style send saturation and a mid-forward speaker/mic colour.
-    lumen::OnePole sendHp[2], sendLp[2], presHp[2], presLp[2];
-    // 90s: smoothed random "wander" on each line, and a longer low-frequency decay.
-    lumen::OnePole bassSplit[numLines];
-    float wander[numLines] {}, wanderTarget[numLines] {};
-    int wanderCounter = 0;
-    lumen::Rng rng;
-    juce::SmoothedValue<float> level, widthSm;
+    Slot slots[poolSize];
+    int active = 0;
+    juce::int64 clock = 0;
+    float rampStep = 0.01f, dieStep = 0.01f;
+    juce::int64 lastHandOff = -1000000, minHandOffInterval = 4800;   // at most one hand-over per 100 ms
+    Params requested;
+    juce::AudioBuffer<float> input, work;
 };

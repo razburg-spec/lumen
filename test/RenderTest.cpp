@@ -142,12 +142,12 @@ int main()
         check ("shimmer fb 100%", render (h, { M::Serial, false, true, false }, "shimfb.wav", 12.0f), false);
     }
     for (int m = 0; m < 6; ++m)
-        for (int c = 0; c < 3; ++c)
+        for (int c = 0; c < 5; ++c)
         {
             Host h; set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, (float) c);
             char nm[64]; std::snprintf (nm, sizeof nm, "reverb mode %d color %d", m, c);
             char wn[64]; std::snprintf (wn, sizeof wn, "reverb_m%d_c%d.wav", m, c);
-            check (nm, render (h, { M::Serial, false, false, true }, c == 0 ? wn : "tmp.wav"), true);
+            check (nm, render (h, { M::Serial, false, false, true }, (c == 0 || c >= 3) ? wn : "tmp.wav"), true);
         }
     {
         Host h; set (h, ParamID::revDecay, 20.0f); set (h, ParamID::revSize, 100.0f); set (h, ParamID::revMode, 5.0f);

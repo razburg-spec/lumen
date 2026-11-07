@@ -68,13 +68,15 @@ void ReverbEngine::reset()
         for (auto& d : diffuser[ch]) d.line.clear();
         for (auto& b : bloomChain[ch]) b.line.clear();
         inHi[ch].reset(); inLo[ch].reset(); outTone[ch].reset();
+        sendHp[ch].reset(); sendLp[ch].reset(); presHp[ch].reset(); presLp[ch].reset();
     }
     const auto shape = shapeFor (params.mode);
     const float scale = 0.25f + 0.75f * params.size;
     for (int i = 0; i < numLines; ++i)
     {
         lines[i].clear();
-        damp[i].reset(); lowDamp[i].reset();
+        damp[i].reset(); lowDamp[i].reset(); bassSplit[i].reset();
+        wander[i] = wanderTarget[i] = 0.0f;
         lineState[i] = 0.0f;
         smoothedLen[i] = (shape.minMs + lineRatios[i] * (shape.maxMs - shape.minMs)) * scale * 0.001f * sampleRate;
     }
@@ -89,13 +91,40 @@ void ReverbEngine::process (juce::AudioBuffer<float>& buffer)
     if (numCh == 0) return;
 
     const auto& p = params;
-    const auto shape = shapeFor (p.mode);
+    auto shape = shapeFor (p.mode);
 
-    // Era colors: 80s narrows the band and adds chorus-like movement, 70s is darker and grainier.
+    // Era colors.
+    //  80s: narrower band, chorus-like movement.
+    //  70s: darker and grainier.
+    //  60s: a physical echo chamber. The send is band-limited and lightly saturated (as if fed through
+    //       a console send and a tape machine), the room is small, hard-walled and dense with strong
+    //       early reflections, there is no modulation, and the return has a mid-forward speaker/mic colour.
+    //  90s: a modern digital hall. Smooth random "wander" on every line instead of a regular LFO,
+    //       extra diffusion, a longer bass decay than treble, and an open, extended top end.
+    const bool sixties = p.color == 3, nineties = p.color == 4;
     float highCut = p.highCutHz;
-    float colorMod = 1.0f, colorDrive = 0.0f;
+    float colorMod = 1.0f, colorDrive = 0.0f, bassMult = 1.0f;
     if (p.color == 1) { highCut = juce::jmin (highCut, 11000.0f); colorMod = 1.4f; }
     if (p.color == 2) { highCut = juce::jmin (highCut, 6500.0f);  colorMod = 0.7f; colorDrive = 0.6f; }
+    if (sixties)
+    {
+        // Pull every mode towards a tiled chamber: blend 70 % of the way to the chamber shape.
+        const ModeShape room { 11.0f, 41.0f, 0.85f, 0.0f, 0.95f, 26.0f, 0.0f, 1.25f };
+        auto mixf = [] (float a, float b) { return a + 0.7f * (b - a); };
+        shape = { mixf (shape.minMs, room.minMs), mixf (shape.maxMs, room.maxMs),
+                  mixf (shape.diffusionScale, room.diffusionScale), 0.0f,
+                  mixf (shape.earlyLevel, room.earlyLevel), mixf (shape.earlyMs, room.earlyMs),
+                  shape.bloom * 0.3f, mixf (shape.damping, room.damping) };
+        highCut = juce::jmin (highCut, 10000.0f);
+        colorDrive = 0.25f;
+    }
+    if (nineties)
+    {
+        highCut = juce::jmin (20000.0f, highCut * 1.25f);
+        colorMod = 1.6f;
+        bassMult = 1.35f;
+        shape.diffusionScale *= 1.12f;
+    }
 
     const float scale = 0.25f + 0.75f * p.size;
     float targetLen[numLines];
@@ -104,9 +133,13 @@ void ReverbEngine::process (juce::AudioBuffer<float>& buffer)
 
     // Per-line feedback gain for the requested RT60: g = 10^(-3 * len / (fs * T60)).
     const float t60 = juce::jlimit (0.2f, 20.0f, p.decaySeconds) * (p.mode == 5 ? 1.3f : 1.0f);
-    float fbGain[numLines];
+    float fbGain[numLines], fbGainLow[numLines];
     for (int i = 0; i < numLines; ++i)
+    {
         fbGain[i] = std::pow (10.0f, -3.0f * targetLen[i] / (sampleRate * t60));
+        fbGainLow[i] = std::pow (10.0f, -3.0f * targetLen[i] / (sampleRate * t60 * bassMult));
+        bassSplit[i].setCutoff (280.0f, sampleRate);
+    }
 
     // Damping: line high cut follows the control, scaled by the mode.
     const float lineHighCut = juce::jlimit (800.0f, 20000.0f, highCut / shape.damping);
@@ -120,7 +153,14 @@ void ReverbEngine::process (juce::AudioBuffer<float>& buffer)
         inHi[ch].setCutoff (highCut, sampleRate);
         inLo[ch].setCutoff (p.lowCutHz, sampleRate);
         outTone[ch].setCutoff (highCut, sampleRate);
+        sendHp[ch].setCutoff (juce::jmax (p.lowCutHz, 320.0f), sampleRate);   // console send bass cut
+        sendLp[ch].setCutoff (9000.0f, sampleRate);
+        presHp[ch].setCutoff (700.0f, sampleRate);                             // speaker/mic presence band
+        presLp[ch].setCutoff (3200.0f, sampleRate);
     }
+    // 90s wander: a new random target per line every ~40 ms, glided smoothly.
+    const int wanderPeriod = juce::jmax (1, (int) (0.04f * sampleRate / juce::jmax (0.2f, p.modRateHz)));
+    const float wanderGlide = 1.0f - std::exp (-1.0f / (0.12f * sampleRate / juce::jmax (0.2f, p.modRateHz)));
 
     const float diff = juce::jlimit (0.0f, 0.78f, p.diffusion * 0.75f * shape.diffusionScale);
     const float bloomG = 0.62f * shape.bloom;
@@ -158,6 +198,8 @@ void ReverbEngine::process (juce::AudioBuffer<float>& buffer)
         for (int ch = 0; ch < 2; ++ch)
         {
             float v = inLo[ch].highpass (inHi[ch].lowpass (x[ch]));
+            if (sixties)
+                v = lumen::softClip (sendLp[ch].lowpass (sendHp[ch].highpass (v)) * 1.6f) * 0.75f;
             for (int d = 0; d < numDiffusers; ++d)
                 v = diffuser[ch][d].process (v, diff);
             if (shape.bloom > 0.0f)
@@ -181,11 +223,23 @@ void ReverbEngine::process (juce::AudioBuffer<float>& buffer)
             }
 
         // Read the tank.
+        if (nineties && ++wanderCounter >= wanderPeriod)
+        {
+            wanderCounter = 0;
+            for (int i = 0; i < numLines; ++i)
+                wanderTarget[i] = rng.nextBipolar();
+        }
         float out[numLines];
         for (int i = 0; i < numLines; ++i)
         {
             smoothedLen[i] += lenGlide * (targetLen[i] - smoothedLen[i]);
-            const float mod = std::sin (lfoPhase[i]) * modSamples * (0.6f + 0.4f * lineRatios[i]);
+            float lfo = std::sin (lfoPhase[i]);
+            if (nineties)
+            {
+                wander[i] += wanderGlide * (wanderTarget[i] - wander[i]);
+                lfo = 0.35f * lfo + 0.9f * wander[i];
+            }
+            const float mod = lfo * modSamples * (0.6f + 0.4f * lineRatios[i]);
             lfoPhase[i] += lfoInc * (0.85f + 0.05f * (float) i);
             if (lfoPhase[i] > lumen::twoPi) lfoPhase[i] -= lumen::twoPi;
             out[i] = lines[i].readLinear (juce::jmax (4.0f, smoothedLen[i] + mod));
@@ -197,7 +251,13 @@ void ReverbEngine::process (juce::AudioBuffer<float>& buffer)
             float v = damp[i].lowpass (out[i]);
             v = lowDamp[i].highpass (v);
             if (colorDrive > 0.0f) v = lumen::softClip (v * (1.0f + colorDrive)) / (1.0f + colorDrive);
-            mixv[i] = v * fbGain[i];
+            if (bassMult > 1.0f)
+            {
+                const float lo = bassSplit[i].lowpass (v);
+                mixv[i] = lo * fbGainLow[i] + (v - lo) * fbGain[i];
+            }
+            else
+                mixv[i] = v * fbGain[i];
         }
         hadamard8 (mixv);
 
@@ -215,6 +275,11 @@ void ReverbEngine::process (juce::AudioBuffer<float>& buffer)
         float wetR = (out[1] + out[3] + out[5] + out[7]) * 0.5f + erR * shape.earlyLevel;
         wetL = outTone[0].lowpass (wetL);
         wetR = outTone[1].lowpass (wetR);
+        if (sixties)
+        {
+            wetL += 0.45f * presLp[0].lowpass (presHp[0].highpass (wetL));
+            wetR += 0.45f * presLp[1].lowpass (presHp[1].highpass (wetR));
+        }
 
         // Width via mid/side.
         const float w = widthSm.getNextValue();

@@ -4,7 +4,7 @@
 
 // Algorithmic reverb: an 8-line feedback delay network with input diffusion,
 // modulated lines, per-line damping and six modes (Hall, Plate, Room, Chamber, Bloom, Cloud)
-// plus three era colors (Now, 80s, 70s).
+// plus five era colors (Now, 80s, 70s, 60s echo chamber, 90s modern digital).
 // Contract shared by all engines: process() replaces the buffer contents with this engine's wet signal.
 class ReverbEngine
 {
@@ -12,7 +12,7 @@ public:
     struct Params
     {
         int mode = 0;            // 0 Hall, 1 Plate, 2 Room, 3 Chamber, 4 Bloom, 5 Cloud
-        int color = 1;           // 0 Now, 1 80s, 2 70s
+        int color = 1;           // 0 Now, 1 80s, 2 70s, 3 60s (echo chamber), 4 90s (modern digital hall)
         float preDelayMs = 20.0f;
         float decaySeconds = 2.5f;
         float size = 0.6f;       // 0..1
@@ -61,5 +61,12 @@ private:
     float lfoPhase[numLines] {};
     float lineState[numLines] {};
     float smoothedLen[numLines] {};
+    // 60s: send EQ, tape-style send saturation and a mid-forward speaker/mic colour.
+    lumen::OnePole sendHp[2], sendLp[2], presHp[2], presLp[2];
+    // 90s: smoothed random "wander" on each line, and a longer low-frequency decay.
+    lumen::OnePole bassSplit[numLines];
+    float wander[numLines] {}, wanderTarget[numLines] {};
+    int wanderCounter = 0;
+    lumen::Rng rng;
     juce::SmoothedValue<float> level, widthSm;
 };

@@ -88,7 +88,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<APC> (juce::ParameterID { revMode, 1 }, "Reverb Mode",
                                        juce::StringArray { "Hall", "Plate", "Room", "Chamber", "Bloom", "Cloud" }, 0));
     layout.add (std::make_unique<APC> (juce::ParameterID { revColor, 1 }, "Reverb Color",
-                                       juce::StringArray { "Now", "80s", "70s" }, 1));
+                                       juce::StringArray { "Now", "80s", "70s", "60s", "90s" }, 1));
     layout.add (std::make_unique<APF> (juce::ParameterID { revPreDelay, 1 }, "Pre-Delay", Range (0.0f, 500.0f, 0.1f), 20.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
     layout.add (std::make_unique<APF> (juce::ParameterID { revDecay, 1 }, "Decay", skewed (0.2f, 20.0f, 2.5f), 2.5f,

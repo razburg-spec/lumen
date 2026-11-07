@@ -3,6 +3,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include "../Source/Parameters.h"
 #include "../Source/dsp/Router.h"
+#include "../Source/dsp/Coloration.h"
 #include <cstdio>
 #include <functional>
 
@@ -166,6 +167,45 @@ int main()
     }
     {
         Host h; check ("block size 1", render (h, { M::Serial, true, true, true }, "tmp.wav", 2.0f, 1), false);
+    }
+    {
+        // Coloration: Shine should raise high-frequency energy, Dark should lower it, 0 is a bypass.
+        auto brightness = [] (float value, float& rmsOut)
+        {
+            const double sr = 48000.0; const int n = 48000;
+            Coloration c; c.prepare (sr, 2); c.setValue (value);
+            juce::AudioBuffer<float> b (2, n);
+            for (int i = 0; i < n; ++i)
+            {
+                // guitar-like test tone: 220 Hz with a few harmonics
+                const float t = (float) i / (float) sr;
+                const float x = 0.25f * (std::sin (juce::MathConstants<float>::twoPi * 220.0f * t)
+                                       + 0.5f * std::sin (juce::MathConstants<float>::twoPi * 440.0f * t)
+                                       + 0.3f * std::sin (juce::MathConstants<float>::twoPi * 1320.0f * t)
+                                       + 0.2f * std::sin (juce::MathConstants<float>::twoPi * 3300.0f * t));
+                b.setSample (0, i, x); b.setSample (1, i, x);
+            }
+            // two passes so the smoothing has settled; measure the second
+            c.process (b);
+            for (int i = 0; i < n; ++i) { const float t = (float) i / (float) sr;
+                const float x = 0.25f * (std::sin (juce::MathConstants<float>::twoPi * 220.0f * t)
+                                       + 0.5f * std::sin (juce::MathConstants<float>::twoPi * 440.0f * t)
+                                       + 0.3f * std::sin (juce::MathConstants<float>::twoPi * 1320.0f * t)
+                                       + 0.2f * std::sin (juce::MathConstants<float>::twoPi * 3300.0f * t));
+                b.setSample (0, i, x); b.setSample (1, i, x); }
+            c.process (b);
+            double e = 0, d = 0; float prev = 0;
+            for (int i = 1000; i < n; ++i) { const float y = b.getSample (0, i); e += y * y; d += (y - prev) * (y - prev); prev = y; }
+            rmsOut = (float) std::sqrt (e / (n - 1000));
+            return (float) std::sqrt (d / e);   // high-frequency weighting
+        };
+        float r0, rs, rd;
+        const float b0 = brightness (0.0f, r0), bs = brightness (100.0f, rs), bd = brightness (-100.0f, rd);
+        const bool ok = bs > b0 * 1.05f && bd < b0 * 0.95f && std::abs (juce::Decibels::gainToDecibels (rs / r0)) < 3.0f
+                        && std::abs (juce::Decibels::gainToDecibels (rd / r0)) < 3.0f;
+        std::printf ("%-28s brightness neutral %.3f  shine %.3f  dark %.3f  level shine %+.1f dB dark %+.1f dB  %s\n",
+                     "coloration", b0, bs, bd, juce::Decibels::gainToDecibels (rs / r0), juce::Decibels::gainToDecibels (rd / r0), ok ? "OK" : "FAIL");
+        if (! ok) ++failures;
     }
     std::printf (failures == 0 ? "ALL PASSED\n" : "%d FAILED\n", failures);
     return failures == 0 ? 0 : 1;

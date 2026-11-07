@@ -41,6 +41,8 @@ juce::String Knob::valueText() const
     if (unit == "%")  return juce::String (juce::roundToInt (v)) + "%";
     if (unit == "dB") return v <= -59.9f ? juce::String ("-inf dB") : signedValue (v, 1) + " dB";
     if (unit == "st") return signedValue (v, 1) + " st";
+    if (unit == "tone") return std::abs (v) < 0.5f ? juce::String ("Neutral")
+                                                  : juce::String (v < 0.0f ? "Dark " : "Shine ") + juce::String (juce::roundToInt (std::abs (v)));
     return juce::String (v, 2);
 }
 

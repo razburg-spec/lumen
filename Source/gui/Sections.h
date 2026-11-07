@@ -75,5 +75,5 @@ public:
     void resized() override;
 
 private:
-    Knob mix, crossFeed, output;
+    Knob mix, crossFeed, coloration, output;
 };

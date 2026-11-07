@@ -9,6 +9,7 @@ namespace ParamID
     inline constexpr auto mix          = "mix";
     inline constexpr auto output       = "output";
     inline constexpr auto crossFeed    = "crossFeed";
+    inline constexpr auto coloration   = "coloration";    // -100 Dark .. +100 Shine
 
     // Delay
     inline constexpr auto delayOn       = "delayOn";

@@ -246,10 +246,13 @@ ReverbSection::ReverbSection (APVTS& s)
 MasterSection::MasterSection (APVTS& s)
     : mix (s, ParamID::mix, "Mix", Theme::master),
       crossFeed (s, ParamID::crossFeed, "Cross-Feed", Theme::master, Knob::Size::Small),
+      coloration (s, ParamID::coloration, "Coloration", Theme::master, Knob::Size::Small, true),
       output (s, ParamID::output, "Output", Theme::master)
 {
     addAndMakeVisible (mix);
     addAndMakeVisible (crossFeed);
+    addAndMakeVisible (coloration);
+    coloration.slider.setTooltip ("Dark adds warm low-order harmonics and softens the top. Shine adds bright upper harmonics.");
     addAndMakeVisible (output);
 }
 
@@ -267,7 +270,8 @@ void MasterSection::resized()
     auto r = getLocalBounds().reduced (padding);
     r.removeFromTop (2 + headerHeight + 8);
     const auto h = (float) r.getHeight();
-    mix.setBounds (r.removeFromTop (juce::roundToInt (h * 0.40f)).reduced (2));
-    crossFeed.setBounds (r.removeFromTop (juce::roundToInt (h * 0.24f)).reduced (14, 2));
+    mix.setBounds (r.removeFromTop (juce::roundToInt (h * 0.32f)).reduced (2));
+    crossFeed.setBounds (r.removeFromTop (juce::roundToInt (h * 0.20f)).reduced (14, 2));
+    coloration.setBounds (r.removeFromTop (juce::roundToInt (h * 0.20f)).reduced (14, 2));
     output.setBounds (r.reduced (2));
 }

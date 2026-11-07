@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Parameters.h"
 #include "dsp/Router.h"
+#include "dsp/Coloration.h"
 #include "licensing/LicenseManager.h"
 
 class LumenProcessor : public juce::AudioProcessor
@@ -40,6 +41,8 @@ private:
     void applyEvaluationGaps (juce::AudioBuffer<float>&, int numSamples);
 
     Router router;
+    Coloration coloration;
+    std::atomic<float>* colorationParam = nullptr;
     juce::AudioBuffer<float> dryBuffer;
     juce::SmoothedValue<float> mixSmoothed, outputSmoothed;
 

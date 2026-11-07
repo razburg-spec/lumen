@@ -44,6 +44,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (pct (mix, "Mix", 35.0f));
     layout.add (db (output, "Output", 0.0f));
     layout.add (pct (crossFeed, "Cross-Feed", 0.0f));
+    layout.add (std::make_unique<APF> (juce::ParameterID { coloration, 1 }, "Coloration", Range (-100.0f, 100.0f, 0.1f), 0.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("tone")
+                                           .withStringFromValueFunction ([] (float v, int)
+                                           {
+                                               if (std::abs (v) < 0.5f) return juce::String ("Neutral");
+                                               return juce::String (v < 0.0f ? "Dark " : "Shine ") + juce::String (juce::roundToInt (std::abs (v)));
+                                           })));
 
     // Delay
     layout.add (std::make_unique<APB> (juce::ParameterID { delayOn, 1 }, "Delay On", true));

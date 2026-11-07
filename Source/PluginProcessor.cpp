@@ -12,6 +12,7 @@ LumenProcessor::LumenProcessor()
     revOnParam   = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (ParamID::revOn));
     mixParam     = apvts.getRawParameterValue (ParamID::mix);
     outputParam  = apvts.getRawParameterValue (ParamID::output);
+    colorationParam = apvts.getRawParameterValue (ParamID::coloration);
     router.attach (apvts);
 }
 
@@ -30,6 +31,8 @@ void LumenProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     const auto numCh = (juce::uint32) juce::jmax (getTotalNumInputChannels(), getTotalNumOutputChannels());
     router.prepare ({ sampleRate, (juce::uint32) samplesPerBlock, numCh });
     dryBuffer.setSize ((int) numCh, samplesPerBlock);
+    coloration.prepare (sampleRate, (int) numCh);
+    coloration.setValue (colorationParam->load());
 
     mixSmoothed.reset (sampleRate, 0.05);
     outputSmoothed.reset (sampleRate, 0.05);
@@ -83,6 +86,10 @@ void LumenProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
             out[i] = (dry[i] * (1.0f - wet) + out[i] * wet) * gain;
         }
     }
+
+    // Coloration acts on the final output, after the whole chain and the dry/wet mix.
+    coloration.setValue (colorationParam->load());
+    coloration.process (buffer);
 
     if (licence->grant() != expectedGrant)
         applyEvaluationGaps (buffer, numSamples);

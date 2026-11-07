@@ -1,29 +1,19 @@
 #pragma once
 #include "DspUtils.h"
+#include "ReverbParams.h"
+#include "ChamberReverb.h"
+#include "RingHall.h"
 #include <array>
 
 // Algorithmic reverb: an 8-line feedback delay network with input diffusion,
 // modulated lines, per-line damping and six modes (Hall, Plate, Room, Chamber, Bloom, Cloud)
-// plus five era colors (Now, 80s, 70s, 60s echo chamber, 90s modern digital).
+// plus five era colors (Now, 80s, 70s, 60s echo chamber, 90s modern digital). Modes 6 and 7 hand over
+// to ChamberReverb (60s rooms), modes 8 and 9 to RingHall (90s halls); changing algorithm crossfades.
 // Contract shared by all engines: process() replaces the buffer contents with this engine's wet signal.
 class ReverbEngine
 {
 public:
-    struct Params
-    {
-        int mode = 0;            // 0 Hall, 1 Plate, 2 Room, 3 Chamber, 4 Bloom, 5 Cloud
-        int color = 1;           // 0 Now, 1 80s, 2 70s, 3 60s (echo chamber), 4 90s (modern digital hall)
-        float preDelayMs = 20.0f;
-        float decaySeconds = 2.5f;
-        float size = 0.6f;       // 0..1
-        float diffusion = 0.75f; // 0..1
-        float modRateHz = 0.5f;
-        float modDepth = 0.25f;  // 0..1
-        float highCutHz = 9000.0f;
-        float lowCutHz = 100.0f;
-        float width = 1.0f;      // 0..1
-        float levelGain = 1.0f;
-    };
+    using Params = ReverbParams;
 
     void prepare (const juce::dsp::ProcessSpec& spec);
     void reset();
@@ -31,6 +21,20 @@ public:
     void process (juce::AudioBuffer<float>& buffer);
 
 private:
+    enum class Kind { Fdn, Chamber, Ring };
+    static Kind kindFor (int mode) { return mode >= 8 ? Kind::Ring : (mode >= 6 ? Kind::Chamber : Kind::Fdn); }
+    void processKind (Kind, juce::AudioBuffer<float>&);
+    void resetKind (Kind);
+    void processFdn (juce::AudioBuffer<float>&);
+    void resetFdn();
+
+    ChamberReverb chamber;
+    RingHall ring;
+    Kind activeKind = Kind::Fdn, fadingKind = Kind::Fdn;
+    int fadeLeft = 0, fadeLength = 1;
+    int chamberVariant = 0, ringVariant = 0;
+    juce::AudioBuffer<float> fadeBuffer;
+
     static constexpr int numLines = 8;
     static constexpr int numDiffusers = 4;
     static constexpr int numBloom = 4;

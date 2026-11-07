@@ -98,9 +98,65 @@ static Stats render (Host& h, Router::Settings st, const char* wavName, float se
     return s;
 }
 
-int main()
+// Writes stereo impulse responses and CPU figures for analysis (test/analyse_ir.py).
+static int measure()
+{
+    constexpr double sr = 48000.0;
+    constexpr int block = 256;
+    for (int m : { 0, 1, 3, 6, 7, 8, 9 })
+        for (float decay : { 1.0f, 2.0f, 5.0f })
+        {
+            Host h;
+            set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, 0.0f); set (h, ParamID::revDecay, decay);
+            set (h, ParamID::revPreDelay, 0.0f); set (h, ParamID::revLowCut, 20.0f);
+            Router r; r.attach (h.apvts); r.setTempo (120.0); r.prepare ({ sr, (juce::uint32) block, 2 });
+            const int total = (int) ((decay * 2.0f + 1.0f) * sr);
+            juce::AudioBuffer<float> out (2, total), b (2, block);
+            for (int pos = 0; pos < total; pos += block)
+            {
+                const int n = juce::jmin (block, total - pos);
+                juce::AudioBuffer<float> v (b.getArrayOfWritePointers(), 2, n);
+                v.clear();
+                if (pos == 0) { v.setSample (0, 0, 1.0f); v.setSample (1, 0, 1.0f); }
+                r.process (v, { Router::Mode::Serial, false, false, true });
+                for (int ch = 0; ch < 2; ++ch) out.copyFrom (ch, pos, v, ch, 0, n);
+            }
+            char wn[64]; std::snprintf (wn, sizeof wn, "ir_m%d_t%d.wav", m, (int) decay);
+            juce::File f = juce::File::getCurrentWorkingDirectory().getChildFile (wn);
+            f.deleteFile();
+            juce::WavAudioFormat wav;
+            if (auto os = std::unique_ptr<juce::OutputStream> (f.createOutputStream()))
+                if (auto w = std::unique_ptr<juce::AudioFormatWriter> (wav.createWriterFor (os.get(), sr, 2, 32, {}, 0)))
+                {
+                    os.release();
+                    w->writeFromAudioSampleBuffer (out, 0, total);
+                }
+        }
+    for (int m = 0; m < 10; ++m)
+    {
+        Host h; set (h, ParamID::revMode, (float) m);
+        Router r; r.attach (h.apvts); r.setTempo (120.0); r.prepare ({ sr, (juce::uint32) block, 2 });
+        juce::AudioBuffer<float> b (2, block);
+        juce::Random rnd (2);
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        const int blocks = (int) (10.0 * sr / block);
+        for (int i = 0; i < blocks; ++i)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+                for (int k = 0; k < block; ++k)
+                    b.setSample (ch, k, (rnd.nextFloat() - 0.5f) * 0.3f);
+            r.process (b, { Router::Mode::Serial, false, false, true });
+        }
+        std::printf ("cpu mode %d: %.2f%% of one core\n", m, (juce::Time::getMillisecondCounterHiRes() - start) / 10000.0 * 100.0);
+    }
+    return 0;
+}
+
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI init;
+    if (argc > 1 && juce::String (argv[1]) == "measure")
+        return measure();
     int failures = 0;
     auto check = [&] (const char* name, Stats s, bool expectTail)
     {
@@ -150,6 +206,36 @@ int main()
             char wn[64]; std::snprintf (wn, sizeof wn, "reverb_m%d_c%d.wav", m, c);
             check (nm, render (h, { M::Serial, false, false, true }, (c == 0 || c >= 3) ? wn : "tmp.wav"), true);
         }
+    for (int m = 6; m < 10; ++m)
+    {
+        Host h; set (h, ParamID::revMode, (float) m);
+        char nm[64]; std::snprintf (nm, sizeof nm, "era reverb mode %d", m);
+        char wn[64]; std::snprintf (wn, sizeof wn, "reverb_m%d_c0.wav", m);
+        check (nm, render (h, { M::Serial, false, false, true }, wn), true);
+        // Extremes of every control that changes the algorithm's behaviour.
+        set (h, ParamID::revDecay, 20.0f); set (h, ParamID::revSize, 100.0f); set (h, ParamID::revDiffusion, 100.0f);
+        set (h, ParamID::revModDepth, 100.0f); set (h, ParamID::revModRate, 5.0f); set (h, ParamID::revPreDelay, 500.0f);
+        std::snprintf (nm, sizeof nm, "era mode %d all max", m);
+        check (nm, render (h, { M::Serial, false, false, true }, "tmp.wav", 15.0f), true);
+        set (h, ParamID::revDecay, 0.2f); set (h, ParamID::revSize, 0.0f); set (h, ParamID::revDiffusion, 0.0f);
+        set (h, ParamID::revModDepth, 0.0f); set (h, ParamID::revPreDelay, 0.0f); set (h, ParamID::revHighCut, 1000.0f);
+        set (h, ParamID::revLowCut, 2000.0f);
+        std::snprintf (nm, sizeof nm, "era mode %d all min", m);
+        check (nm, render (h, { M::Serial, false, false, true }, "tmp.wav"), false);
+    }
+    {
+        // Walk through every mode while audio plays, including across the algorithm crossfades.
+        Host h;
+        check ("mode changes while playing", render (h, { M::Serial, false, false, true }, "mode_walk.wav", 6.0f, 256,
+               [&h] (double t) { set (h, ParamID::revMode, (float) ((int) (t * 8.0) % 10)); }), false);
+    }
+    {
+        Host h; set (h, ParamID::revMode, 6.0f); set (h, ParamID::crossFeed, 100.0f); set (h, ParamID::revDecay, 20.0f);
+        set (h, ParamID::delayFeedback, 110.0f);
+        check ("60s worst case cross-feed", render (h, { M::Serial, true, true, true }, "tmp.wav", 15.0f, 64), true);
+        set (h, ParamID::revMode, 8.0f);
+        check ("90s worst case cross-feed", render (h, { M::Serial, true, true, true }, "tmp.wav", 15.0f, 64), true);
+    }
     {
         Host h; set (h, ParamID::revDecay, 20.0f); set (h, ParamID::revSize, 100.0f); set (h, ParamID::revMode, 5.0f);
         check ("reverb cloud 20s", render (h, { M::Serial, false, false, true }, "tmp.wav", 15.0f), true);

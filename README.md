@@ -33,6 +33,6 @@ Source/
   Parameters.*        every parameter
   gui/                look and feel, widgets, display, sections, activation panel
   licensing/          Lemon Squeezy licence keys, trial, offline grace
-  dsp/                DelayEngine, ShimmerEngine, ReverbEngine, Router
-test/                 offline render test (all engines and modes)
+  dsp/                DelayEngine, ShimmerEngine, ReverbEngine, ChamberReverb, RingHall, Coloration, Router
+test/                 offline render test (all engines and modes); `RenderTest measure` and analyse_ir.py measure decay, density, ringing and stereo
 ```

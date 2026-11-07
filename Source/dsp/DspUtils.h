@@ -122,4 +122,57 @@ namespace lumen
         float next01() { state = state * 1664525u + 1013904223u; return (float) (state >> 8) * (1.0f / 16777216.0f); }
         float nextBipolar() { return next01() * 2.0f - 1.0f; }
     };
+
+    // Slow random movement in -1..1: eases from one random target to the next, with no steps
+    // and no periodic pattern. Used to keep delay lines moving.
+    struct Drift
+    {
+        Rng rng;
+        float from = 0.0f, to = 0.0f, phase = 0.0f;
+
+        void seed (uint32_t s) { rng.state = s; from = 0.0f; to = rng.nextBipolar(); phase = 0.0f; }
+
+        float next (float rateHz, float sampleRate)
+        {
+            phase += rateHz / sampleRate;
+            if (phase >= 1.0f)
+            {
+                phase -= 1.0f;
+                from = to;
+                to = rng.nextBipolar();
+            }
+            return from + (to - from) * phase * phase * (3.0f - 2.0f * phase);
+        }
+    };
+
+    // Feedback-path filter with separate low, mid and high decay times.
+    // output = gh * x + (gm - gh) * LP(highCorner) + (gl - gm) * LP(midCorner).
+    // With gl >= gm >= gh >= 0 every term is non-negative and each low-pass is at most 1,
+    // so the response never exceeds gl and the feedback loop stays stable.
+    struct BandDecay
+    {
+        OnePole low, high;
+        float gl = 0.0f, gm = 0.0f, gh = 0.0f;
+
+        void reset() { low.reset(); high.reset(); }
+
+        void set (float pathSamples, float t60Seconds, float bassRatio, float highRatio,
+                  float midCornerHz, float highCornerHz, float sampleRate)
+        {
+            const auto gainFor = [pathSamples, sampleRate] (float t60)
+            {
+                return std::pow (10.0f, -3.0f * pathSamples / (sampleRate * t60));
+            };
+            gm = gainFor (t60Seconds);
+            gl = gainFor (t60Seconds * juce::jmax (1.0f, bassRatio));
+            gh = gainFor (t60Seconds * juce::jmin (1.0f, highRatio));
+            low.setCutoff (midCornerHz, sampleRate);
+            high.setCutoff (highCornerHz, sampleRate);
+        }
+
+        float process (float x)
+        {
+            return gh * x + (gm - gh) * high.lowpass (x) + (gl - gm) * low.lowpass (x);
+        }
+    };
 }

@@ -54,6 +54,8 @@ target_sources(Lumen PRIVATE
     Source/dsp/DelayEngine.cpp
     Source/dsp/ShimmerEngine.cpp
     Source/dsp/ReverbEngine.cpp
+    Source/dsp/ChamberReverb.cpp
+    Source/dsp/RingHall.cpp
     Source/dsp/Router.cpp
     Source/gui/LumenLookAndFeel.cpp
     Source/gui/Widgets.cpp

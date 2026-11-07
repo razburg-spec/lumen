@@ -56,10 +56,91 @@ void ReverbEngine::prepare (const juce::dsp::ProcessSpec& spec)
     widthSm.reset (spec.sampleRate, 0.05);
     for (int i = 0; i < numLines; ++i)
         lfoPhase[i] = lumen::twoPi * (float) i / (float) numLines;
+
+    chamber.prepare (sampleRate);
+    ring.prepare (sampleRate);
+    fadeBuffer.setSize (2, (int) spec.maximumBlockSize);
+    fadeLength = juce::jmax (1, (int) (0.03f * sampleRate));
     reset();
 }
 
 void ReverbEngine::reset()
+{
+    resetFdn();
+    chamber.reset();
+    ring.reset();
+    activeKind = fadingKind = kindFor (params.mode);
+    fadeLeft = 0;
+}
+
+void ReverbEngine::resetKind (Kind kind)
+{
+    switch (kind)
+    {
+        case Kind::Fdn:     resetFdn(); break;
+        case Kind::Chamber: chamber.reset(); break;
+        case Kind::Ring:    ring.reset(); break;
+    }
+}
+
+void ReverbEngine::processKind (Kind kind, juce::AudioBuffer<float>& buffer)
+{
+    auto* L = buffer.getWritePointer (0);
+    auto* R = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr;
+    switch (kind)
+    {
+        case Kind::Fdn:     processFdn (buffer); break;
+        case Kind::Chamber: chamber.process (L, R, buffer.getNumSamples(), params, chamberVariant); break;
+        case Kind::Ring:    ring.process (L, R, buffer.getNumSamples(), params, ringVariant); break;
+    }
+}
+
+void ReverbEngine::process (juce::AudioBuffer<float>& buffer)
+{
+    const int numCh = juce::jmin (2, buffer.getNumChannels());
+    const int n = buffer.getNumSamples();
+    if (numCh == 0) return;
+
+    if (params.mode == 6 || params.mode == 7) chamberVariant = params.mode - 6;
+    if (params.mode == 8 || params.mode == 9) ringVariant = params.mode - 8;
+
+    const auto wanted = kindFor (params.mode);
+    if (wanted != activeKind)
+    {
+        // Mid-fade changes drop the older algorithm: it has been fading for a while already.
+        if (fadeLeft > 0)
+            resetKind (fadingKind);
+        fadingKind = activeKind;
+        activeKind = wanted;
+        fadeLeft = fadeLength;
+    }
+
+    if (fadeLeft <= 0 || n > fadeBuffer.getNumSamples())
+    {
+        processKind (activeKind, buffer);
+        return;
+    }
+
+    // Both algorithms run for the 30 ms crossfade.
+    juce::AudioBuffer<float> old (fadeBuffer.getArrayOfWritePointers(), numCh, n);
+    for (int ch = 0; ch < numCh; ++ch)
+        old.copyFrom (ch, 0, buffer, ch, 0, n);
+    processKind (fadingKind, old);
+    processKind (activeKind, buffer);
+
+    const float start = (float) fadeLeft / (float) fadeLength;
+    const float end = (float) juce::jmax (0, fadeLeft - n) / (float) fadeLength;
+    for (int ch = 0; ch < numCh; ++ch)
+    {
+        buffer.applyGainRamp (ch, 0, n, 1.0f - start, 1.0f - end);
+        buffer.addFromWithRamp (ch, 0, old.getReadPointer (ch), n, start, end);
+    }
+    fadeLeft -= n;
+    if (fadeLeft <= 0)
+        resetKind (fadingKind);
+}
+
+void ReverbEngine::resetFdn()
 {
     preDelay.clear();
     early.clear();
@@ -84,7 +165,7 @@ void ReverbEngine::reset()
     widthSm.setCurrentAndTargetValue (params.width);
 }
 
-void ReverbEngine::process (juce::AudioBuffer<float>& buffer)
+void ReverbEngine::processFdn (juce::AudioBuffer<float>& buffer)
 {
     const int numCh = juce::jmin (2, buffer.getNumChannels());
     const int n = buffer.getNumSamples();

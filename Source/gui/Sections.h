@@ -23,6 +23,7 @@ protected:
     APVTS& state;
     juce::Colour accent;
     juce::OwnedArray<Knob> mainKnobs, advancedKnobs;
+    juce::OwnedArray<juce::ComboBox> combos;
 
 private:
     juce::String title, subtitle;
@@ -34,7 +35,6 @@ private:
 
     PowerButton power;
     APVTS::ButtonAttachment powerAttachment;
-    juce::OwnedArray<juce::ComboBox> combos;
     juce::OwnedArray<APVTS::ComboBoxAttachment> comboAttachments;
     juce::OwnedArray<PillToggle> pills;
     juce::OwnedArray<APVTS::ButtonAttachment> pillAttachments;
@@ -64,6 +64,7 @@ class ReverbSection : public EngineSection
 {
 public:
     explicit ReverbSection (APVTS&);
+    void poll() override;
 };
 
 // Global output column: Mix, Cross-Feed and Output.

@@ -239,7 +239,20 @@ ReverbSection::ReverbSection (APVTS& s)
 
     addCombo (ParamID::revMode);
     addCombo (ParamID::revColor);
+    combos[1]->setTooltip ("Era color for the first six modes. The 60s and 90s modes have their own voicing.");
     poll();
+}
+
+void ReverbSection::poll()
+{
+    EngineSection::poll();
+    // The 60s and 90s modes carry their era in the algorithm, so Color does not apply to them.
+    const bool usesColor = state.getRawParameterValue (ParamID::revMode)->load() < 5.5f;
+    if (combos[1]->isEnabled() != usesColor)
+    {
+        combos[1]->setEnabled (usesColor);
+        combos[1]->setAlpha (usesColor ? 1.0f : 0.4f);
+    }
 }
 
 //==============================================================================

@@ -64,11 +64,11 @@ An algorithmic reverb: six types of space, each available in five eras.
 - Pre-Delay: time before the reverb starts. 20 to 80 ms keeps vocals and drums clear in front of the space.
 - Level: output level of the reverb.
 - Mode: the type of space. Hall, Plate, Room, Chamber, Bloom (slow swell) or Cloud (dense, diffuse wash).
-- Era: voices the chosen mode after the studio reverbs of each decade. Every era works with every mode.
-- 60s: a console send into tape and a physical space. Band-limited, gently saturated and mid-forward, with no movement. Chamber becomes a tiled echo chamber fed by a tape delay, a speaker and a microphone pair, and Room becomes a small chamber with hard, reflective walls.
+- Era: voices the chosen mode after the studio reverbs of each decade, listed from oldest to newest. Every era works with every mode, and the eras are level-matched, so switching changes the colour, not the volume.
+- 60s: a console send into tape and a physical space. Band-limited (thin lows, no air), gently saturated and mid-forward, with no movement. Chamber becomes a tiled echo chamber fed by a tape delay, a speaker and a microphone pair, and Room becomes a small chamber with hard, reflective walls.
 - 70s: analog plates and the first digital units. Dark and soft on top, grainy, with sparser diffusion and slow movement.
 - 80s: the classic digital halls. Bright but band-limited, with the grit of 12-bit, reduced-rate converters and a strong chorus-like movement.
-- 90s: later digital halls. Smooth random movement on every line, lush diffusion, a longer bass decay and an open top end. Hall and Cloud switch to a dedicated random-hall algorithm (Cloud with a slower, concert-hall voice).
+- 90s: later digital halls. Smooth random movement on every line, lush diffusion, a long bass decay and the brightest, most open top end of all the eras. Hall and Cloud switch to a dedicated random-hall algorithm (Cloud with a slower, concert-hall voice).
 - Now: clean, full range and transparent, with gentle movement.
 - Advanced: Diffusion (how quickly echoes blur into a tail), Mod Rate and Mod Depth (movement that avoids metallic ringing), Low-Cut and High-Cut (shape the tail), Width (from mono to full stereo).
 

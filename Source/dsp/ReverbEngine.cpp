@@ -21,7 +21,8 @@ int ReverbCore::variantFor (const ReverbParams& p)
 
 void ReverbCore::prepare (const juce::dsp::ProcessSpec& spec)
 {
-    const auto fs = (float) spec.sampleRate;
+    fs = (float) spec.sampleRate;
+    levelGain.reset (spec.sampleRate, 0.03);
     fdn.prepare (fs);
     chamber.prepare (fs);
     ring.prepare (fs);
@@ -37,6 +38,8 @@ void ReverbCore::reset (const ReverbParams& p)
     activeKind = fadingKind = kindFor (p);
     activeVariant = fadingVariant = variantFor (p);
     fadeLeft = 0;
+    for (int ch = 0; ch < 2; ++ch) { postLp1[ch].reset(); postLp2[ch].reset(); postHp[ch].reset(); }
+    levelGain.setCurrentAndTargetValue (levelFor (p));
 }
 
 void ReverbCore::resetKind (Kind kind, const ReverbParams& p)
@@ -62,6 +65,65 @@ void ReverbCore::processKind (Kind kind, juce::AudioBuffer<float>& buffer, const
 }
 
 void ReverbCore::process (juce::AudioBuffer<float>& buffer, const ReverbParams& p)
+{
+    processAlgorithms (buffer, p);
+    finish (buffer, p);
+}
+
+void ReverbCore::finish (juce::AudioBuffer<float>& buffer, const ReverbParams& p)
+{
+    const int numCh = juce::jmin (2, buffer.getNumChannels());
+    const int n = buffer.getNumSamples();
+
+    // The dedicated engines get the same hardware bandwidth as their era's FDN voice:
+    // 60s chambers were band-limited by tube mics, speakers and tape; 90s digital halls
+    // still roll off where the High-Cut is set.
+    const auto kind = activeKind;
+    if (kind != Kind::Fdn)
+    {
+        const float lp = kind == Kind::Chamber ? juce::jmin (p.highCutHz, 6000.0f)
+                                               : juce::jmin (p.highCutHz * 1.2f, 16000.0f);
+        const float hp = kind == Kind::Chamber ? 140.0f : 20.0f;
+        for (int ch = 0; ch < numCh; ++ch)
+        {
+            postLp1[ch].setCutoff (lp, fs); postLp2[ch].setCutoff (lp, fs); postHp[ch].setCutoff (hp, fs);
+            auto* d = buffer.getWritePointer (ch);
+            for (int i = 0; i < n; ++i)
+                d[i] = postHp[ch].highpass (postLp2[ch].lowpass (postLp1[ch].lowpass (d[i])));
+        }
+    }
+
+    levelGain.setTargetValue (levelFor (p));
+    if (! levelGain.isSmoothing())
+    {
+        buffer.applyGain (levelGain.getTargetValue());
+        return;
+    }
+    for (int i = 0; i < n; ++i)
+    {
+        const float g = levelGain.getNextValue();
+        for (int ch = 0; ch < numCh; ++ch)
+            buffer.setSample (ch, i, buffer.getSample (ch, i) * g);
+    }
+}
+
+float ReverbCore::levelFor (const ReverbParams& p)
+{
+    // Measured with `RenderTest loudness` (100% wet, noise burst): each era is matched to Now
+    // within its mode, so switching eras changes the colour, not the volume.
+    static constexpr float trimDb[6][5] = {
+        //  60s    70s    80s    90s    Now
+        { -1.9f,  0.9f,  0.4f,  2.9f,  0.0f },   // Hall
+        { -0.6f,  3.0f,  0.3f, -0.3f,  0.0f },   // Plate
+        {  4.9f,  3.0f,  0.5f, -1.7f,  0.0f },   // Room
+        {  1.6f,  2.5f,  0.0f, -0.6f,  0.0f },   // Chamber
+        { -1.9f,  1.0f,  0.5f, -0.4f,  0.0f },   // Bloom
+        { -2.2f,  0.8f,  0.5f, -1.9f,  0.0f },   // Cloud
+    };
+    return juce::Decibels::decibelsToGain (trimDb[juce::jlimit (0, 5, p.mode)][juce::jlimit (0, 4, p.era)]);
+}
+
+void ReverbCore::processAlgorithms (juce::AudioBuffer<float>& buffer, const ReverbParams& p)
 {
     const int numCh = juce::jmin (2, buffer.getNumChannels());
     const int n = buffer.getNumSamples();

@@ -39,10 +39,10 @@ namespace
 
     constexpr EraVoice eras[5] = {
         //  maxHC   hcScale damp  diff  mod   drive bass  pres  outLP    tape   wander conv
-        {  9000.0f, 1.00f, 1.15f, 0.90f, 0.0f, 0.30f, 1.00f, 0.45f,     0.0f, true,  false, false },  // 60s
-        {  6000.0f, 1.00f, 1.35f, 0.65f, 0.5f, 0.55f, 1.10f, 0.00f,  7000.0f, false, false, false },  // 70s
+        {  6500.0f, 1.00f, 1.15f, 0.90f, 0.0f, 0.30f, 1.00f, 0.45f,  8000.0f, true,  false, false },  // 60s
+        {  5000.0f, 1.00f, 1.50f, 0.65f, 0.5f, 0.55f, 1.10f, 0.00f,  6000.0f, false, false, false },  // 70s
         { 11000.0f, 1.00f, 1.00f, 1.00f, 2.0f, 0.00f, 1.00f, 0.00f, 10500.0f, false, false, true  },  // 80s
-        { 18000.0f, 1.25f, 0.90f, 1.12f, 1.6f, 0.00f, 1.35f, 0.00f,     0.0f, false, true,  false },  // 90s
+        { 20000.0f, 1.80f, 0.70f, 1.15f, 2.2f, 0.00f, 1.60f, 0.00f,     0.0f, false, true,  false },  // 90s
         { 20000.0f, 1.00f, 1.00f, 1.00f, 1.0f, 0.00f, 1.00f, 0.00f,     0.0f, false, false, false },  // Now
     };
 }

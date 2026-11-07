@@ -20,8 +20,11 @@ private:
     enum class Kind { Fdn, Chamber, Ring };
     static Kind kindFor (const ReverbParams&);
     static int variantFor (const ReverbParams&);
+    static float levelFor (const ReverbParams&);
     void processKind (Kind, juce::AudioBuffer<float>&, const ReverbParams&, int variant);
     void resetKind (Kind, const ReverbParams&);
+    void processAlgorithms (juce::AudioBuffer<float>&, const ReverbParams&);
+    void finish (juce::AudioBuffer<float>&, const ReverbParams&);   // era tone for the dedicated engines + level match
 
     FdnReverb fdn;
     ChamberReverb chamber;
@@ -30,6 +33,9 @@ private:
     int activeVariant = 0, fadingVariant = 0;
     int fadeLeft = 0, fadeLength = 1;
     juce::AudioBuffer<float> fadeBuffer;
+    float fs = 44100.0f;
+    lumen::OnePole postLp1[2], postLp2[2], postHp[2];
+    juce::SmoothedValue<float> levelGain;
 };
 
 // The reverb engine. Size, Mode, Era and Pre-Delay never move a delay line while sound is in it

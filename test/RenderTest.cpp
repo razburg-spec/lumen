@@ -99,6 +99,38 @@ static Stats render (Host& h, Router::Settings st, const char* wavName, float se
 }
 
 // Writes stereo impulse responses and CPU figures for analysis (test/analyse_ir.py).
+// Prints the wet loudness (pink-ish noise burst, 100 % wet) of every mode x era, for level matching.
+static int loudness()
+{
+    constexpr double sr = 48000.0; constexpr int block = 256;
+    for (int m = 0; m < 6; ++m)
+    {
+        std::printf ("mode %d:", m);
+        for (int e = 0; e < 5; ++e)
+        {
+            Host h; set (h, ParamID::revMode, (float) m); set (h, ParamID::revColor, (float) e);
+            Router r; r.attach (h.apvts); r.setTempo (120.0); r.prepare ({ sr, (juce::uint32) block, 2 });
+            juce::AudioBuffer<float> b (2, block); juce::Random rnd (7); float lp = 0.0f;
+            double energy = 0, hiEnergy = 0; lumen::OnePole hp; hp.setCutoff (4000.0f, (float) sr);
+            for (int pos = 0; pos < (int) (4.0 * sr); pos += block)
+            {
+                for (int k = 0; k < block; ++k)
+                {
+                    lp += 0.1f * ((rnd.nextFloat() - 0.5f) - lp);
+                    const float x = pos < (int) (1.0 * sr) ? lp * 2.0f : 0.0f;
+                    b.setSample (0, k, x); b.setSample (1, k, x);
+                }
+                r.process (b, { Router::Mode::Serial, false, false, true });
+                for (int ch = 0; ch < 2; ++ch) for (int k = 0; k < block; ++k) energy += (double) b.getSample (ch, k) * b.getSample (ch, k);
+                for (int k = 0; k < block; ++k) { const float y = hp.highpass (b.getSample (0, k)); hiEnergy += 2.0 * y * y; }
+            }
+            std::printf ("  %+6.2f (%5.1f)", 10.0 * std::log10 (energy + 1e-20), 10.0 * std::log10 ((hiEnergy + 1e-20) / (energy + 1e-20)));
+        }
+        std::printf ("\n");
+    }
+    return 0;
+}
+
 static int measure()
 {
     constexpr double sr = 48000.0;
@@ -159,6 +191,8 @@ int main (int argc, char** argv)
     juce::ScopedJuceInitialiser_GUI init;
     if (argc > 1 && juce::String (argv[1]) == "measure")
         return measure();
+    if (argc > 1 && juce::String (argv[1]) == "loudness")
+        return loudness();
     int failures = 0;
     auto check = [&] (const char* name, Stats s, bool expectTail)
     {

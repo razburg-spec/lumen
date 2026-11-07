@@ -31,10 +31,12 @@ void LumenProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     const auto numCh = (juce::uint32) juce::jmax (getTotalNumInputChannels(), getTotalNumOutputChannels());
     router.prepare ({ sampleRate, (juce::uint32) samplesPerBlock, numCh });
     dryBuffer.setSize ((int) numCh, samplesPerBlock);
-    coloration.prepare (sampleRate, (int) numCh);
+    coloration.prepare (sampleRate, (int) numCh, samplesPerBlock);
     coloration.setValue (colorationParam->load());
 
     mixSmoothed.reset (sampleRate, 0.05);
+    activeSmoothed.reset (sampleRate, 0.03);
+    activeSmoothed.setCurrentAndTargetValue (anyEngineOn() ? 1.0f : 0.0f);
     outputSmoothed.reset (sampleRate, 0.05);
     mixSmoothed.setCurrentAndTargetValue (mixParam->load() / 100.0f);
     outputSmoothed.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputParam->load(), -60.0f));
@@ -72,12 +74,14 @@ void LumenProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
                 router.setTempo (*bpm);
     router.process (buffer, settings);
 
+    // With every engine off Lumen is fully dry: the Mix control only applies while something is running.
     mixSmoothed.setTargetValue (mixParam->load() / 100.0f);
+    activeSmoothed.setTargetValue (settings.delayOn || settings.shimmerOn || settings.reverbOn ? 1.0f : 0.0f);
     outputSmoothed.setTargetValue (juce::Decibels::decibelsToGain (outputParam->load(), -60.0f));
 
     for (int i = 0; i < numSamples; ++i)
     {
-        const float wet = mixSmoothed.getNextValue();
+        const float wet = mixSmoothed.getNextValue() * activeSmoothed.getNextValue();
         const float gain = outputSmoothed.getNextValue();
         for (int ch = 0; ch < numOut; ++ch)
         {
@@ -107,7 +111,7 @@ void LumenProcessor::applyEvaluationGaps (juce::AudioBuffer<float>& buffer, int 
         const auto phase = (evaluationClock + i) % gapPeriod;
         if (phase >= gapPeriod / 2 && phase < gapPeriod / 2 + gapLength)
             for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-                buffer.setSample (ch, i, dryBuffer.getSample (ch, i) * (1.0f - mixParam->load() / 100.0f));
+                buffer.setSample (ch, i, dryBuffer.getSample (ch, i) * (anyEngineOn() ? 1.0f - mixParam->load() / 100.0f : 1.0f));
     }
     evaluationClock += numSamples;
 }

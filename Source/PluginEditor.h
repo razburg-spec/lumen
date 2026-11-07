@@ -5,6 +5,7 @@
 #include "gui/Display.h"
 #include "gui/Sections.h"
 #include "gui/ActivationPanel.h"
+#include "gui/Toolbar.h"
 
 // The whole interface, laid out at a fixed design size. The editor scales it as a
 // unit, so everything stays vector-sharp at any window size.
@@ -12,7 +13,7 @@ class LumenView : public juce::Component,
                   private juce::ChangeListener
 {
 public:
-    static constexpr int designWidth = 1100, designHeight = 720;
+    static constexpr int designWidth = 1100, designHeight = 764;
 
     explicit LumenView (LumenProcessor&);
     ~LumenView() override;
@@ -25,6 +26,8 @@ private:
     void setAdvanced (bool);
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void showActivation (bool show);
+    void showManual (bool show);
+    void updateHistoryButtons();
 
     LumenProcessor& processor;
     Display display;
@@ -39,6 +42,11 @@ private:
     LicenseManager& licence;
     LicenceBadge licenceBadge;
     std::unique_ptr<ActivationPanel> activation;
+
+    PresetBar presets;
+    ToolButton undoButton { "Undo", ToolButton::Glyph::undo }, redoButton { "Redo", ToolButton::Glyph::redo },
+               resetButton { "Reset" }, helpButton { "User guide", ToolButton::Glyph::help };
+    std::unique_ptr<ManualPanel> manual;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LumenView)
 };

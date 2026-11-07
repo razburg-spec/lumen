@@ -53,7 +53,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                                            })));
 
     // Delay
-    layout.add (std::make_unique<APB> (juce::ParameterID { delayOn, 1 }, "Delay On", true));
+    layout.add (std::make_unique<APB> (juce::ParameterID { delayOn, 1 }, "Delay On", false));
     layout.add (std::make_unique<APF> (juce::ParameterID { delayTimeMs, 1 }, "Delay Time", skewed (1.0f, 4000.0f, 400.0f), 375.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("ms")));
     layout.add (std::make_unique<APB> (juce::ParameterID { delaySync, 1 }, "Delay Sync", true));
@@ -91,7 +91,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (db (shimLevel, "Shimmer Level", -6.0f));
 
     // Reverb
-    layout.add (std::make_unique<APB> (juce::ParameterID { revOn, 1 }, "Reverb On", true));
+    layout.add (std::make_unique<APB> (juce::ParameterID { revOn, 1 }, "Reverb On", false));
     layout.add (std::make_unique<APC> (juce::ParameterID { revMode, 1 }, "Reverb Mode",
                                        juce::StringArray { "Hall", "Plate", "Room", "Chamber", "Bloom", "Cloud",
                                                            "60s Chamber", "60s Mirror", "90s Hall", "90s Concert" }, 0));

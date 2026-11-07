@@ -4,6 +4,7 @@
 #include "dsp/Router.h"
 #include "dsp/Coloration.h"
 #include "licensing/LicenseManager.h"
+#include "ParamHistory.h"
 
 class LumenProcessor : public juce::AudioProcessor
 {
@@ -34,6 +35,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "LumenState", createParameterLayout() };
+    ParamHistory history { *this };   // undo / redo of the user's edits (lives here so it survives closing the window)
 
     juce::SharedResourcePointer<LicenseManager> licence;
 
@@ -44,7 +46,8 @@ private:
     Coloration coloration;
     std::atomic<float>* colorationParam = nullptr;
     juce::AudioBuffer<float> dryBuffer;
-    juce::SmoothedValue<float> mixSmoothed, outputSmoothed;
+    juce::SmoothedValue<float> mixSmoothed, outputSmoothed, activeSmoothed;
+    bool anyEngineOn() const { return delayOnParam->get() || shimOnParam->get() || revOnParam->get(); }
 
     juce::AudioParameterChoice* routingParam = nullptr;
     juce::AudioParameterBool* delayOnParam = nullptr;

@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 
-project(Lumen VERSION 0.1.0 LANGUAGES C CXX)
+project(Lumen VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -62,8 +62,13 @@ target_sources(Lumen PRIVATE
     Source/gui/Display.cpp
     Source/gui/Sections.cpp
     Source/gui/ActivationPanel.cpp
+    Source/gui/Toolbar.cpp
+    Source/presets/FactoryPresets.cpp
     Source/licensing/LemonSqueezyBackend.cpp
     Source/licensing/LicenseManager.cpp)
+
+# The built-in user guide (also published on the website).
+juce_add_binary_data(LumenData SOURCES Resources/Manual.md)
 
 target_compile_definitions(Lumen PUBLIC
     JUCE_WEB_BROWSER=0
@@ -72,5 +77,5 @@ target_compile_definitions(Lumen PUBLIC
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
 target_link_libraries(Lumen
-    PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography
+    PRIVATE LumenData juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)

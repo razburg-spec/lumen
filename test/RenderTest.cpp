@@ -293,6 +293,45 @@ int main (int argc, char** argv)
                      "coloration", b0, bs, bd, juce::Decibels::gainToDecibels (rs / r0), juce::Decibels::gainToDecibels (rd / r0), ok ? "OK" : "FAIL");
         if (! ok) ++failures;
     }
+    {
+        // Coloration aliasing: Shine +100 on pure sines must not create anything that is not a harmonic.
+        const double sr = 44100.0; constexpr int order = 15; const int fftN = 1 << order; const int n = fftN * 2;
+        juce::dsp::FFT fft (order);
+        juce::dsp::WindowingFunction<float> window ((size_t) fftN, juce::dsp::WindowingFunction<float>::blackmanHarris);
+        float worst = -200.0f; float worstF = 0.0f, worstA = 0.0f;
+        for (float freq : { 1000.0f, 3000.0f, 5000.0f, 8000.0f, 12000.0f, 16000.0f })
+            for (float amp : { 0.3f, 0.03f })
+            {
+                Coloration c; c.prepare (sr, 2, 512); c.setValue (100.0f);
+                juce::AudioBuffer<float> b (2, n);
+                for (int i = 0; i < n; ++i)
+                {
+                    const float x = amp * (float) std::sin (2.0 * juce::MathConstants<double>::pi * freq * i / sr);
+                    b.setSample (0, i, x); b.setSample (1, i, x);
+                }
+                c.process (b);
+                std::vector<float> data ((size_t) fftN * 2, 0.0f);
+                for (int i = 0; i < fftN; ++i) data[(size_t) i] = b.getSample (0, n - fftN + i);
+                window.multiplyWithWindowingTable (data.data(), (size_t) fftN);
+                fft.performFrequencyOnlyForwardTransform (data.data());
+                const float binHz = (float) sr / (float) fftN;
+                float peak = 0.0f, stray = 0.0f, strayF = 0.0f;
+                for (int k = 1; k < fftN / 2; ++k) peak = juce::jmax (peak, data[(size_t) k]);
+                for (int k = 8; k < fftN / 2; ++k)
+                {
+                    const float f = (float) k * binHz;
+                    const float nearest = std::round (f / freq) * freq;
+                    if (std::abs (f - nearest) < 8.0f * binHz) continue;   // a harmonic (or the fundamental)
+                    if (data[(size_t) k] > stray) { stray = data[(size_t) k]; strayF = f; }
+                }
+                if (std::getenv ("LUMEN_VERBOSE")) std::printf ("   f %.0f amp %.2f stray %.1f dB at %.0f Hz\n", freq, amp, juce::Decibels::gainToDecibels (stray / peak, -200.0f), strayF);
+                const float db = juce::Decibels::gainToDecibels (stray / peak, -200.0f);
+                if (db > worst) { worst = db; worstF = freq; worstA = amp; }
+            }
+        const bool ok = worst < -55.0f;
+        std::printf ("%-28s worst non-harmonic %.1f dB (at %.0f Hz, amp %.2f)  %s\n", "coloration aliasing", worst, worstF, worstA, ok ? "OK" : "FAIL");
+        if (! ok) ++failures;
+    }
     std::printf (failures == 0 ? "ALL PASSED\n" : "%d FAILED\n", failures);
     return failures == 0 ? 0 : 1;
 }

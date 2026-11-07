@@ -4,6 +4,7 @@ namespace
 {
     constexpr int margin = 20;
     constexpr int headerHeight = 72;
+    constexpr int toolbarHeight = 44;
     constexpr int footerHeight = 30;
     constexpr int gap = 14;
     constexpr int masterWidth = 160;
@@ -16,8 +17,22 @@ LumenView::LumenView (LumenProcessor& p)
       display (p.apvts),
       delay (p.apvts), shimmer (p.apvts), reverb (p.apvts), master (p.apvts),
       routing (*p.apvts.getParameter (ParamID::routing), { "Serial", "Parallel", juce::String::fromUTF8 ("Reverb \xe2\x80\xba Delay") }, Theme::brandBlue),
-      licence (*p.licence)
+      licence (*p.licence),
+      presets (p.apvts, p.history)
 {
+    for (auto* c : std::initializer_list<juce::Component*> { &presets, &undoButton, &redoButton, &resetButton, &helpButton })
+        addAndMakeVisible (c);
+    undoButton.setTooltip ("Undo (up to 100 steps)");
+    redoButton.setTooltip ("Redo");
+    resetButton.setTooltip ("Reset everything to the initial state: all engines off, fully dry");
+    helpButton.setTooltip ("User guide");
+    undoButton.onClick = [this] { processor.history.undo(); };
+    redoButton.onClick = [this] { processor.history.redo(); };
+    resetButton.onClick = [this] { presets.resetAll(); };
+    helpButton.onClick = [this] { showManual (manual == nullptr); };
+    processor.history.addChangeListener (this);
+    updateHistoryButtons();
+
     for (auto* c : std::initializer_list<juce::Component*> { &display, &delay, &shimmer, &reverb, &master, &routing, &advancedToggle })
         addAndMakeVisible (c);
 
@@ -41,12 +56,42 @@ LumenView::LumenView (LumenProcessor& p)
 
 LumenView::~LumenView()
 {
+    processor.history.removeChangeListener (this);
     licence.removeChangeListener (this);
 }
 
-void LumenView::changeListenerCallback (juce::ChangeBroadcaster*)
+void LumenView::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
+    if (source == &processor.history)
+    {
+        updateHistoryButtons();
+        return;
+    }
     licenceBadge.setStatus (licence.getStatus());
+}
+
+void LumenView::updateHistoryButtons()
+{
+    undoButton.setEnabled (processor.history.canUndo());
+    redoButton.setEnabled (processor.history.canRedo());
+}
+
+void LumenView::showManual (bool show)
+{
+    if (! show)
+    {
+        manual.reset();
+        return;
+    }
+
+    manual = std::make_unique<ManualPanel>();
+    manual->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LumenView> (this)]
+                                                                 { if (safe != nullptr) safe->showManual (false); }); };
+    addAndMakeVisible (*manual);
+    manual->setBounds (getLocalBounds());
+    manual->grabKeyboardFocus();
+    if (activation != nullptr)
+        activation->toFront (false);
 }
 
 void LumenView::showActivation (bool show)
@@ -101,6 +146,12 @@ void LumenView::paint (juce::Graphics& g)
     g.setFont (Theme::caps (9.5f, 0.22f));
     g.drawText ("RAZ BURG AUDIOCRAFTS", juce::Rectangle<float> (textX + 1.0f, 41.0f, 260.0f, 14.0f), juce::Justification::centredLeft, false);
 
+    // Toolbar label.
+    g.setColour (Theme::faint);
+    g.setFont (Theme::caps (9.5f));
+    g.drawText ("PRESET", juce::Rectangle<int> (margin, presets.getY(), 60, presets.getHeight()).toFloat(),
+                juce::Justification::centredLeft, false);
+
     // Label in front of the routing selector.
     g.setColour (Theme::faint);
     g.setFont (Theme::caps (9.5f));
@@ -126,6 +177,7 @@ void LumenView::resized()
 {
     auto r = getLocalBounds();
     auto header = r.removeFromTop (headerHeight).reduced (margin, 0);
+    auto toolbar = r.removeFromTop (toolbarHeight).reduced (margin, 0).withTrimmedBottom (10);
     r.removeFromBottom (footerHeight);
     r = r.reduced (margin, 0);
 
@@ -134,6 +186,20 @@ void LumenView::resized()
     licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
     if (activation != nullptr)
         activation->setBounds (getLocalBounds());
+    if (manual != nullptr)
+        manual->setBounds (getLocalBounds());
+
+    // Toolbar: preset browser on the left, history and help on the right.
+    toolbar.removeFromLeft (64);   // "PRESET" label
+    presets.setBounds (toolbar.removeFromLeft (360));
+    helpButton.setBounds (toolbar.removeFromRight (34));
+    toolbar.removeFromRight (16);
+    resetButton.setBounds (toolbar.removeFromRight (70));
+    toolbar.removeFromRight (8);
+    redoButton.setBounds (toolbar.removeFromRight (34));
+    toolbar.removeFromRight (6);
+    undoButton.setBounds (toolbar.removeFromRight (34));
+
     routing.setBounds (juce::Rectangle<int> (380, 32).withCentre ({ getWidth() / 2 + 40, header.getCentreY() }));
 
     display.setBounds (r.removeFromTop (advanced ? 118 : 200));

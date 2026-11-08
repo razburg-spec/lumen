@@ -52,4 +52,4 @@ Chroma is a compressor with six characters by Raz Burg AudioCrafts. One knob cha
 
 ## Licence
 
-- Chroma runs fully for 14 days as a trial. After that, activate it with the licence key from your purchase email. One licence covers one computer; deactivate it there to move to another.
+- Chroma is free. It is protected with iLok: sign in with your free iLok account and activate it on up to two computers. To move it to another computer, deactivate it in iLok License Manager first.

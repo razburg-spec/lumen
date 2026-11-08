@@ -43,3 +43,7 @@ Source/
   dsp/                DelayEngine, ShimmerEngine, ReverbEngine (FdnReverb, ChamberReverb, RingHall), Coloration, Router
 test/                 offline render test (all engines and modes); `RenderTest measure` and analyse_ir.py measure decay, density, ringing and stereo
 ```
+
+## Chroma
+
+The second plugin, the Chroma compressor, lives in `compressor/` with its own build. See `compressor/README.md`.

@@ -1,0 +1,58 @@
+name: Build Chroma Windows
+
+on:
+  push:
+    branches: [main]
+    paths: ['compressor/**', '.github/workflows/build-chroma-windows.yml']
+  pull_request:
+    paths: ['compressor/**', '.github/workflows/build-chroma-windows.yml']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: compressor
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE download
+        uses: actions/cache@v4
+        with:
+          path: compressor/build/_deps
+          key: juce-8.0.4-chroma-${{ runner.os }}
+
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build VST3 and Standalone
+        run: |
+          cmake --build build --config Release --target Chroma_VST3 --parallel
+          cmake --build build --config Release --target Chroma_Standalone --parallel
+
+      - name: Render test
+        shell: bash
+        run: |
+          cmake -S test -B test/build -G "Visual Studio 17 2022" -A x64 -DJUCE_DIR="$(pwd)/build/_deps/juce-src"
+          cmake --build test/build --config Release --parallel
+          ./test/build/ChromaRenderTest_artefacts/Release/ChromaRenderTest.exe
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item -Recurse build/Chroma_artefacts/Release/VST3/Chroma.vst3 out/
+          Copy-Item build/Chroma_artefacts/Release/Standalone/Chroma.exe out/
+          @"
+          Chroma for Windows (test build)
+
+          1. Copy the Chroma.vst3 folder to C:\Program Files\Common Files\VST3
+          2. Open Cubase. If Chroma doesn't show up, go to Studio > VST Plug-in Manager and click Rescan.
+          3. Chroma.exe is the standalone app, for a quick test without a DAW.
+          "@ | Out-File -Encoding utf8 out/README.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Chroma-Windows
+          path: compressor/out/

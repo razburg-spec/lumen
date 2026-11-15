@@ -3,6 +3,9 @@ name: Build Windows
 on:
   push:
     branches: [main]
+    paths-ignore: ['compressor/**']
+  pull_request:
+    paths-ignore: ['compressor/**']
   workflow_dispatch:
 
 jobs:
@@ -20,9 +23,10 @@ jobs:
       - name: Configure
         run: cmake -B build -G "Visual Studio 17 2022" -A x64
 
-      - name: Build VST3 and Standalone
+      - name: Build VST3, AAX and Standalone
         run: |
           cmake --build build --config Release --target Lumen_VST3 --parallel
+          cmake --build build --config Release --target Lumen_AAX --parallel
           cmake --build build --config Release --target Lumen_Standalone --parallel
 
       - name: Render test
@@ -37,14 +41,30 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item -Recurse build/Lumen_artefacts/Release/VST3/Lumen.vst3 out/
+          Copy-Item -Recurse build/Lumen_artefacts/Release/AAX/Lumen.aaxplugin out/
           Copy-Item build/Lumen_artefacts/Release/Standalone/Lumen.exe out/
           @"
           Lumen for Windows (test build)
 
+          Easiest: run Lumen-*-Windows-Setup.exe (installs VST3 and AAX).
+          Windows may show "Windows protected your PC": click More info > Run anyway.
+
+          Manual install:
           1. Copy the Lumen.vst3 folder to C:\Program Files\Common Files\VST3
-          2. Open Cubase. If Lumen doesn't show up, go to Studio > VST Plug-in Manager and click Rescan.
-          3. Lumen.exe is the standalone app, for a quick test without a DAW.
+          2. Copy the Lumen.aaxplugin folder to C:\Program Files\Common Files\Avid\Audio\Plug-Ins
+          3. Cubase: if Lumen doesn't show up, go to Studio > VST Plug-in Manager and click Rescan.
+          4. Pro Tools: this AAX is not PACE-signed yet, so it loads only in Pro Tools Developer.
+          5. Lumen.exe is the standalone app, for a quick test without a DAW.
           "@ | Out-File -Encoding utf8 out/README.txt
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path CMakeLists.txt -Pattern 'project\(Lumen VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc /DPluginName=Lumen /DPluginVersion=$ver "/DSourceDir=$(Resolve-Path out)" "/DOutputDir=$(Resolve-Path out)" "tools/windows/installer.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - uses: actions/upload-artifact@v4
         with:

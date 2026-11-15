@@ -305,7 +305,7 @@ void ChromaView::resized()
     side (outputCard, output, outMeter, softClip);
 
     auto centre = centreCard.reduced (14, 0).withTrimmedTop (titleHeight).withTrimmedBottom (14);
-    grMeter.setBounds (centre.removeFromLeft (318));
+    grMeter.setBounds (centre.removeFromLeft (300));
     centre.removeFromLeft (8);
     dial.setBounds (centre);
 

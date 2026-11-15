@@ -23,7 +23,6 @@ Lumen is a reverb, delay and granular shimmer processor by Raz Burg AudioCrafts.
 - Serial: Delay feeds Shimmer, which feeds Reverb. Echoes are smeared into the space.
 - Parallel: each engine hears the dry signal on its own, and their outputs are summed. Clearer and more defined.
 - Reverb › Delay: the reverb comes first and the delay repeats the reverb tail. Good for big ambient throws.
-- Licence badge: shows the trial or licence state and opens the activation panel.
 - Advanced: shows every parameter of each engine, below its main knobs.
 
 ## Display

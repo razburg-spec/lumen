@@ -5,6 +5,10 @@
 // store exists: replace them with the real store and product IDs before release.
 namespace LicenseConfig
 {
+    // Lumen is free and protected with iLok (PACE wrapping, two activations per user), so the built-in
+    // Lemon Squeezy trial and licence check are switched off. Kept for a possible subscription later.
+    inline constexpr bool builtIn = false;
+
     inline constexpr juce::int64 storeId   = 0;    // TODO: Lemon Squeezy store ID
     inline constexpr juce::int64 productId = 0;    // TODO: Lemon Squeezy product ID for Lumen
 

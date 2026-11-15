@@ -43,15 +43,18 @@ LumenView::LumenView (LumenProcessor& p)
     advancedToggle.setToggleState (startAdvanced, juce::dontSendNotification);
     setAdvanced (startAdvanced);
 
-    addAndMakeVisible (licenceBadge);
-    licenceBadge.onClick = [this] { showActivation (true); };
-    licence.addChangeListener (this);
-    changeListenerCallback (nullptr);
+    if (LicenseConfig::builtIn)
+    {
+        addAndMakeVisible (licenceBadge);
+        licenceBadge.onClick = [this] { showActivation (true); };
+        licence.addChangeListener (this);
+        changeListenerCallback (nullptr);
 
-    // Ask straight away whenever Lumen is not free to run.
-    const auto state = licence.getStatus().state;
-    if (state != LicenseManager::State::licensed && state != LicenseManager::State::trial)
-        showActivation (true);
+        // Ask straight away whenever Lumen is not free to run.
+        const auto state = licence.getStatus().state;
+        if (state != LicenseManager::State::licensed && state != LicenseManager::State::trial)
+            showActivation (true);
+    }
 }
 
 LumenView::~LumenView()
@@ -183,7 +186,8 @@ void LumenView::resized()
 
     advancedToggle.setBounds (header.removeFromRight (112).withSizeKeepingCentre (112, 28));
     header.removeFromRight (10);
-    licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
+    if (LicenseConfig::builtIn)
+        licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
     if (activation != nullptr)
         activation->setBounds (getLocalBounds());
     if (manual != nullptr)

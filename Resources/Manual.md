@@ -104,11 +104,10 @@ An algorithmic reverb: six types of space, each available in five eras.
 - Vintage: the 60s, 70s, 80s and 90s studio sounds.
 - Send (100% Wet): ready-made aux returns.
 
-## Licence and trial
+## Licence
 
-- Lumen runs fully for a 14-day trial. After that, enter the licence key from your purchase email in the activation panel.
-- A licence activates one computer. To move Lumen to another computer, open the licence badge and choose Deactivate first.
-- Lumen checks the licence online now and then, and keeps working offline in between.
+- Lumen is free. Get it from My plugins at audiocrafts.razburg.com, with your free site account.
+- Lumen is protected with iLok: redeem the iLok code from My plugins in iLok License Manager with your free iLok account, and activate Lumen on up to two computers. To move it to another computer, deactivate it in iLok License Manager first.
 
 ## Support
 

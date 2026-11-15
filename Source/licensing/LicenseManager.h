@@ -2,6 +2,7 @@
 #include <juce_events/juce_events.h>
 #include <juce_cryptography/juce_cryptography.h>
 #include "LicenseBackend.h"
+#include "LicenseConfig.h"
 
 // One per process (use through juce::SharedResourcePointer), shared by every Lumen
 // instance and format. Owns the activation, the trial clock and the encrypted state

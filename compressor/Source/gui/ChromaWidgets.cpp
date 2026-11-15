@@ -58,8 +58,41 @@ CharacterDial::CharacterDial (juce::RangedAudioParameter& p)
     setTooltip ("Character: drag, scroll or click a name");
 }
 
-juce::Point<float> CharacterDial::centre() const { return { (float) getWidth() * 0.5f, (float) getHeight() * 0.55f }; }
-float CharacterDial::radius() const { return juce::jmin ((float) getWidth() * 0.24f, (float) getHeight() * 0.30f); }
+namespace
+{
+    constexpr float trackScale = 1.18f;   // detent dots sit on this ring (in knob radii)
+    constexpr float labelScale = 1.36f;   // labels start beyond this ring, clear of the dots
+    constexpr float labelHeight = 20.0f;
+    constexpr float labelPadding = 14.0f;
+
+    juce::Font labelFont() { return Theme::caps (10.5f, 0.14f); }
+
+    float labelWidth (int i)
+    {
+        return (float) juce::GlyphArrangement::getStringWidthInt (labelFont(), characterNames()[i].toUpperCase()) + labelPadding;
+    }
+}
+
+juce::Point<float> CharacterDial::centre() const { return { (float) getWidth() * 0.5f, (float) getHeight() * 0.52f }; }
+
+float CharacterDial::radius() const
+{
+    // As large as possible while every label stays inside the component.
+    const auto c = centre();
+    auto r = juce::jmin ((float) getWidth() * 0.24f, (float) getHeight() * 0.30f);
+    for (int i = 0; i < 6; ++i)
+    {
+        const auto a = angleFor ((float) i);
+        const auto sx = std::abs (std::sin (a)), cy = std::cos (a);
+        if (sx > 0.01f)
+            r = juce::jmin (r, ((float) getWidth() * 0.5f - 4.0f - labelWidth (i)) / (labelScale * sx));
+        if (cy > 0.01f)
+            r = juce::jmin (r, (c.y - 4.0f - labelHeight) / (labelScale * cy));
+        else if (cy < -0.01f)
+            r = juce::jmin (r, ((float) getHeight() - c.y - 4.0f - labelHeight) / (labelScale * -cy));
+    }
+    return juce::jmax (10.0f, r);
+}
 
 float CharacterDial::angleFor (float position) const
 {
@@ -69,11 +102,15 @@ float CharacterDial::angleFor (float position) const
 
 juce::Rectangle<float> CharacterDial::labelBounds (int i) const
 {
+    // Anchor each label by its inner edge on the label ring and push it outwards along the
+    // pointer direction, so it never covers its detent dot or the ring, whatever its length.
     const auto c = centre();
     const auto a = angleFor ((float) i);
-    const auto r = radius() * 1.52f;
-    const auto p = juce::Point<float> (c.x + std::sin (a) * r, c.y - std::cos (a) * r);
-    return juce::Rectangle<float> (78.0f, 20.0f).withCentre (p);
+    const auto r = radius() * labelScale;
+    const auto w = labelWidth (i);
+    const auto dir = juce::Point<float> (std::sin (a), -std::cos (a));
+    const auto anchor = c + dir * r;
+    return juce::Rectangle<float> (w, labelHeight).withCentre (anchor + juce::Point<float> (dir.x * w * 0.5f, dir.y * labelHeight * 0.5f));
 }
 
 int CharacterDial::labelAt (juce::Point<float> p) const
@@ -150,7 +187,7 @@ void CharacterDial::paint (juce::Graphics& g)
 
     // Detent ticks and the lit arc up to the current position.
     juce::Path track;
-    track.addCentredArc (c.x, c.y, r * 1.18f, r * 1.18f, 0.0f, angleFor (0.0f), angleFor (5.0f), true);
+    track.addCentredArc (c.x, c.y, r * trackScale, r * trackScale, 0.0f, angleFor (0.0f), angleFor (5.0f), true);
     g.setColour (Theme::line);
     g.strokePath (track, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
@@ -158,7 +195,7 @@ void CharacterDial::paint (juce::Graphics& g)
     {
         const auto a = angleFor ((float) i);
         const auto col = Theme::characterColour (i);
-        const auto p = juce::Point<float> (c.x + std::sin (a) * r * 1.18f, c.y - std::cos (a) * r * 1.18f);
+        const auto p = juce::Point<float> (c.x + std::sin (a) * r * trackScale, c.y - std::cos (a) * r * trackScale);
         g.setColour (i == index ? col : col.withAlpha (0.35f));
         g.fillEllipse (juce::Rectangle<float> (i == index ? 9.0f : 6.0f, i == index ? 9.0f : 6.0f).withCentre (p));
 
@@ -171,7 +208,7 @@ void CharacterDial::paint (juce::Graphics& g)
             g.drawRoundedRectangle (lb.reduced (0.5f), lb.getHeight() * 0.5f, 1.0f);
         }
         g.setColour (i == index ? col : (i == hovered ? Theme::text : Theme::muted));
-        g.setFont (Theme::caps (10.5f, 0.14f));
+        g.setFont (labelFont());
         g.drawText (characterNames()[i].toUpperCase(), lb, juce::Justification::centred, false);
     }
 

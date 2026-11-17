@@ -68,7 +68,7 @@ void ChromaProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     for (int ch = getMainBusNumInputChannels(); ch < getMainBusNumOutputChannels(); ++ch)
         main.clear (ch, 0, numSamples);
 
-    const bool unlicensed = licence->grant() != expectedGrant;
+    const bool unlicensed = LicenseConfig::builtIn && licence->grant() != expectedGrant;
     if (unlicensed)
     {
         dryBuffer.setSize (main.getNumChannels(), numSamples, false, false, true);

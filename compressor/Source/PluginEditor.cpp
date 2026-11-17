@@ -63,14 +63,17 @@ ChromaView::ChromaView (ChromaProcessor& p)
     processor.history.addChangeListener (this);
     updateHistoryButtons();
 
-    addAndMakeVisible (licenceBadge);
-    licenceBadge.onClick = [this] { showActivation (true); };
-    licence.addChangeListener (this);
-    changeListenerCallback (nullptr);
+    if (LicenseConfig::builtIn)
+    {
+        addAndMakeVisible (licenceBadge);
+        licenceBadge.onClick = [this] { showActivation (true); };
+        licence.addChangeListener (this);
+        changeListenerCallback (nullptr);
 
-    const auto licenceState = licence.getStatus().state;
-    if (licenceState != LicenseManager::State::licensed && licenceState != LicenseManager::State::trial)
-        showActivation (true);
+        const auto licenceState = licence.getStatus().state;
+        if (licenceState != LicenseManager::State::licensed && licenceState != LicenseManager::State::trial)
+            showActivation (true);
+    }
 }
 
 ChromaView::~ChromaView()
@@ -270,7 +273,8 @@ void ChromaView::resized()
     r.removeFromBottom (footerHeight);
     r = r.reduced (margin, 0);
 
-    licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
+    if (LicenseConfig::builtIn)
+        licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
     if (activation != nullptr) activation->setBounds (getLocalBounds());
     if (manual != nullptr)     manual->setBounds (getLocalBounds());
 

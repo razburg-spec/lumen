@@ -37,7 +37,7 @@ REFS='<pkg-ref id="'$ID'.vst3">vst3.pkg</pkg-ref><pkg-ref id="'$ID'.au">au.pkg</
 if [[ -n "${WRAPTOOL:-}" && -n "${PACE_ACCOUNT:-}" ]]; then
     mkdir -p "$WORK/aax"
     "$WRAPTOOL" sign --verbose --account "$PACE_ACCOUNT" ${PACE_WCGUID:+--wcguid "$PACE_WCGUID"} \
-        --signid "$DEV_ID_APP" --in "$ART/AAX/$PLUGIN.aaxplugin" --out "$WORK/aax/$PLUGIN.aaxplugin"
+        --signid "$DEV_ID_APP" --extrasigningoptions "--timestamp --options runtime" --in "$ART/AAX/$PLUGIN.aaxplugin" --out "$WORK/aax/$PLUGIN.aaxplugin"
     pkgbuild --root "$WORK/aax" --install-location "/Library/Application Support/Avid/Audio/Plug-Ins" --identifier $ID.aax --version "$VERSION" "$WORK/aax.pkg"
     CHOICES+='<choice id="aax" title="AAX (Pro Tools)"><pkg-ref id="'$ID'.aax"/></choice>'
     OUTLINE+='<line choice="aax"/>'; REFS+='<pkg-ref id="'$ID'.aax">aax.pkg</pkg-ref>'

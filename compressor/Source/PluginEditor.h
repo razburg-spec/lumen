@@ -33,7 +33,7 @@ private:
     APVTS& state;
 
     // Cards (painted by the view)
-    juce::Rectangle<int> inputCard, centreCard, outputCard, dynamicsCard, colourCard, keyCard;
+    juce::Rectangle<int> inputCard, centreCard, outputCard, dynamicsCard, saturationCard, parallelCard, keyCard;
 
     CharacterDial dial;
     GrMeter grMeter;

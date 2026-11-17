@@ -31,8 +31,8 @@ namespace
             // ---------------------------------------------------------------- Drums
             { "Drums", "Punchy Kick",          { chr ("Retro"), in (8), ratio (4), atk (25), rel (90), sat (15), out (-3) } },
             { "Drums", "Snare Crack",          { chr ("Indie"), in (10), ratio (6), atk (8), rel (70), sat (30), out (-4), CLIP } },
-            { "Drums", "Smashed Room",         { chr ("Indie"), in (22), ratio (20), atk (0.1f), rel (60), sat (40), out (-10), par (45), CLIP } },
-            { "Drums", "Parallel Drum Bus",    { chr ("Retro"), in (18), ratio (12), atk (0.8f), rel (100), sat (25), out (-6), par (35) } },
+            { "Drums", "Smashed Room",         { chr ("Indie"), in (22), ratio (20), atk (0.1f), rel (60), sat (20), out (-10), par (45), CLIP } },
+            { "Drums", "Parallel Drum Bus",    { chr ("Retro"), in (18), ratio (12), atk (0.8f), rel (100), sat (10), out (-6), par (35) } },
             { "Drums", "Glue Drum Group",      { chr ("Bus"), in (6), ratio (4), atk (10), rel (100), sat (10) } },
             { "Drums", "Overheads Tame",       { chr ("Modern"), in (6), ratio (2.5f), atk (15), rel (200), out (-2) } },
 

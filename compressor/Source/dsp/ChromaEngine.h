@@ -4,13 +4,15 @@
 
 // The whole Chroma signal path, shared by the plugin and the offline render test.
 //
-//   source ─┬─ Input ─ compressor (character) ─ Saturation ─ Output ─┐
-//           │              ▲ detector: input, external key or         ├─ Parallel mix ─ Soft Clip ─ out
-//           │              │ band-passed input (Freq Key)             │
-//           └──────────────────────────── source (dry) ───────────────┘
+//   source ─┬─ Input ─ compressor (character) ─ Output ─┐
+//           │              ▲ detector: input, external key ├─ Parallel mix ─ Saturation ─ Soft Clip ─ out
+//           │              │ or band-passed input         │
+//           └─────────────────── source (dry) ────────────┘
 //
+// Parallel and Saturation are independent: Parallel only blends the compressor with the source, and
+// Saturation colours the result of that blend, so its amount doesn't change with Parallel.
 // No stage adds latency. Saturation and Soft Clip run at 2x oversampling only while they are switched
-// in (the source for the Parallel blend takes a matching pass), and are skipped entirely when off.
+// in, and are skipped entirely when off.
 // With the defaults (ratio 1:1, 0 dB, no saturation, no clipping, Parallel 100%) the output is
 // bit-identical to the input.
 class ChromaEngine
@@ -85,14 +87,13 @@ private:
 
     void processChunk (juce::AudioBuffer<float>& main, const juce::AudioBuffer<float>* key, const Params&);
     float computeGainReduction (float levelDb, const Character&, float ratio) const;
-    void saturate (juce::AudioBuffer<float>& signal, juce::AudioBuffer<float>& source, int numSamples,
-                   const Character&, int numChannels, float grDb);
+    void saturate (juce::AudioBuffer<float>& signal, int numSamples, const Character&, int numChannels, float grDb);
     void softClipBlock (juce::AudioBuffer<float>& buffer, int numSamples, bool on);
 
     double fs = 48000.0;
     int channels = 2, maxBlock = 512;
 
-    juce::AudioBuffer<float> dry, wet, detector, residue, shifted;
+    juce::AudioBuffer<float> dry, wet, detector, residue;
     juce::SmoothedValue<float> inputGain, outputGain, parallelMix, satAmount, satPath, clipPath;
 
     // Detector state
@@ -101,7 +102,7 @@ private:
     float lastKeyFreq = -1.0f;
 
     // Saturation state
-    std::unique_ptr<juce::dsp::Oversampling<float>> satOversampler, dryOversampler, clipOversampler;
+    std::unique_ptr<juce::dsp::Oversampling<float>> satOversampler, clipOversampler;
     OnePole toneLow[2], toneHigh[2];
     int lastCharacter = -1;
     float lastDrive = 1.0f;

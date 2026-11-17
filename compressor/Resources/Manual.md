@@ -27,8 +27,8 @@ Chroma is a compressor with six characters by Raz Burg AudioCrafts. One knob cha
 - Attack: how fast the compressor grabs (0.05 ms to 200 ms). Each character has its own fastest attack.
 - Release: how fast it lets go (20 ms to 3 s).
 - Ratio: how hard it compresses, from 1:1 (no compression) to 20:1.
-- Saturation: harmonic saturation in the voice of the current character. At 0% it is off.
-- Parallel: blends the untouched source (0%) with the processed signal (100%) for parallel compression.
+- Saturation (Amount): harmonic saturation in the voice of the current character. At 0% it is off. It colors the whole output after the Parallel blend, so it sounds the same at any Parallel setting.
+- Parallel (Mix): blends the untouched source (0%) with the compressed signal (100%) for parallel compression. It only sets how much compression you hear and does not change the Saturation.
 - Soft Clip: a soft clipper on the final output that rounds off peaks above about -4 dBFS and keeps them below 0 dBFS.
 
 ## Key (sidechain)

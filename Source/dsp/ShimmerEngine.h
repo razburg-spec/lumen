@@ -8,10 +8,12 @@
 //
 //   input -> low/high cut -> input diffusers -> 8-line feedback network -> output taps
 //                                 ^                         |
-//                                 |   decay + tone damping  |
-//                                 +-- (1 - s) * plain  <----+
-//                                 +--  s * pitch-shifted <--+   (s = Shimmer amount)
+//                                 |   decay + tone damping, orthogonal mix
+//                                 +-- plain share   <-------+
+//                                 +-- pitched share <-------+   (per line: shifter, Tone, Low-Cut)
 //
+// The Shimmer amount sets the pitched share of each pass (kept small: the plain part has to carry
+// the whole decay while the pitched part builds up an interval at a time on top of it).
 // The pitch shifters are delay-line shifters with three overlapping read heads. Each head picks a
 // new, slightly random window length every cycle, so the shifter never settles into a periodic
 // flutter; inside the diffuse tank the remaining artifacts become a soft, choir-like sheen.
@@ -77,7 +79,6 @@ private:
 
     lumen::OnePole inHp[2], inLp[2];
     lumen::Allpass diffuser[2][numDiffusers];
-    float diffuserMs[2][numDiffusers] {};
 
     lumen::DelayLine lines[numLines];
     float lineSamples[numLines] {};
@@ -91,6 +92,4 @@ private:
     lumen::OnePole shiftLp[numLines], shiftHp[numLines];
 
     juce::SmoothedValue<float> amountSm, levelSm;
-    float lastSize = -1.0f;
-    int coeffCounter = 0;
 };

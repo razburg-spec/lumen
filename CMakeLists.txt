@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 
-project(Lumen VERSION 0.3.1 LANGUAGES C CXX)
+project(Lumen VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -80,3 +80,13 @@ target_compile_definitions(Lumen PUBLIC
 target_link_libraries(Lumen
     PRIVATE LumenData juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# Optional: renders the interface to JPG (cmake -DLUMEN_SCREENSHOT_TOOL=ON, target LumenScreenshot).
+option(LUMEN_SCREENSHOT_TOOL "Build the screenshot tool" OFF)
+if(LUMEN_SCREENSHOT_TOOL)
+    juce_add_console_app(LumenScreenshot)
+    target_sources(LumenScreenshot PRIVATE tools/Screenshot.cpp)
+    target_compile_definitions(LumenScreenshot PRIVATE $<TARGET_PROPERTY:Lumen,COMPILE_DEFINITIONS>)
+    target_include_directories(LumenScreenshot PRIVATE $<TARGET_PROPERTY:Lumen,INCLUDE_DIRECTORIES>)
+    target_link_libraries(LumenScreenshot PRIVATE Lumen LumenData juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography)
+endif()

@@ -125,7 +125,6 @@ void ShimmerEngine::reset()
         shiftLp[k].reset(); shiftHp[k].reset();
         shiftA[k].reset(); shiftB[k].reset();
     }
-    lastSize = -1.0f;
     updateCoefficients();
     for (int k = 0; k < numLines; ++k)
         lineSamples[k] = lineMs[k] * 0.001f * sampleRate * sizeScale (params.size);
@@ -180,9 +179,15 @@ void ShimmerEngine::process (juce::AudioBuffer<float>& buffer)
     const float g = 0.45f + 0.3f * juce::jlimit (0.0f, 1.0f, p.diffusion);        // diffuser coefficient
     const float modSamples = juce::jlimit (0.0f, 1.0f, p.modulation) * 0.0016f * sampleRate;
     const float modRate = 0.25f + 0.9f * p.modulation;
-    const bool useB = std::abs (p.pitchB) >= 0.01f;
+    // An interval of 0 st means "no shift" for that voice. An unshifted copy would add up in phase with the
+    // plain path and build up, so a voice at 0 st simply drops out (both at 0 = a plain reverb).
+    const bool useA = std::abs (p.pitchA) >= 0.5f || p.voice == 1;
+    const bool useB = std::abs (p.pitchB) >= 0.5f;
     // With two intervals, A leads and B sits a little under it (equal-power split).
-    const float wA = useB ? 0.8f : 1.0f, wB = useB ? 0.6f : 0.0f;
+    const float wA = useA ? (useB ? 0.8f : 1.0f) : 0.0f;
+    const float wB = useB ? (useA ? 0.6f : 1.0f) : 0.0f;
+    const float shiftScale = (useA || useB) ? 1.0f : 0.0f;
+    const float climb = juce::jmin (1.0f, juce::jmax (useA ? std::abs (p.pitchA) : 0.0f, useB ? std::abs (p.pitchB) : 0.0f) / 12.0f);
     // The shifter's crossfades lose a little power on diffuse material; this restores it (measured).
     constexpr float maxShiftPower = 0.25f;
 
@@ -194,12 +199,13 @@ void ShimmerEngine::process (juce::AudioBuffer<float>& buffer)
         const float s = amountSm.getNextValue();
         // Share of the energy that is shifted on each trip round the tank. It stays small: the plain part
         // has to last the whole decay, while the pitched part builds up an octave at a time on top of it.
-        const float shiftPower = maxShiftPower * s * s;
+        const float shiftPower = maxShiftPower * s * s * shiftScale;
         const float plainGain = std::sqrt (1.0f - shiftPower);
         const float shiftGain = std::sqrt (shiftPower);
         // The octaves that climb past the Tone filter take energy out of the loop; a little extra gain on
         // the pitched path gives it back, so high Shimmer settings keep ringing instead of thinning out.
-        const float shiftMakeup = 1.0f + 0.1f * s;
+        // Small intervals climb slowly and lose little, so they get proportionally less.
+        const float shiftMakeup = 1.0f + 0.2f * s * climb;
 
         // Input: band-limit, then diffuse.
         float in[2] = { L[i], R ? R[i] : L[i] };
@@ -227,7 +233,9 @@ void ShimmerEngine::process (juce::AudioBuffer<float>& buffer)
         for (int k = 0; k < numLines; ++k)
         {
             const float y = f[k] - hh;
-            float pitched = wA * shiftA[k].process (y);
+            float pitched = 0.0f;
+            if (useA) pitched += wA * shiftA[k].process (y);
+            else      shiftA[k].push (y);
             if (useB) pitched += wB * shiftB[k].process (y);
             else      shiftB[k].push (y);
             pitched = shiftLp[k].lowpass (shiftHp[k].highpass (pitched)) * shiftMakeup;

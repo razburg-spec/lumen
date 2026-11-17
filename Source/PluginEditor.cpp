@@ -30,6 +30,8 @@ LumenView::LumenView (LumenProcessor& p)
     redoButton.onClick = [this] { processor.history.redo(); };
     resetButton.onClick = [this] { presets.resetAll(); };
     helpButton.onClick = [this] { showManual (manual == nullptr); };
+    addChildComponent (update);
+    update.onVisibilityChanged = [this] { resized(); repaint(); };
     processor.history.addChangeListener (this);
     updateHistoryButtons();
 
@@ -172,8 +174,9 @@ void LumenView::paint (juce::Graphics& g)
    #else
     const auto fineHint = juce::String::fromUTF8 ("Double-click resets  \xc2\xb7  Ctrl-drag for fine control");
    #endif
-    g.drawText (fineHint,
-                footer, juce::Justification::centredRight, false);
+    if (! update.isVisible())   // the update pill takes this spot when shown
+        g.drawText (fineHint,
+                    footer, juce::Justification::centredRight, false);
 }
 
 void LumenView::resized()
@@ -181,7 +184,10 @@ void LumenView::resized()
     auto r = getLocalBounds();
     auto header = r.removeFromTop (headerHeight).reduced (margin, 0);
     auto toolbar = r.removeFromTop (toolbarHeight).reduced (margin, 0).withTrimmedBottom (10);
-    r.removeFromBottom (footerHeight);
+    {
+        const auto footer = r.removeFromBottom (footerHeight).reduced (margin, 0);
+        update.setBounds (footer.withLeft (footer.getRight() - update.getIdealWidth()).withSizeKeepingCentre (update.getIdealWidth(), 24));
+    }
     r = r.reduced (margin, 0);
 
     advancedToggle.setBounds (header.removeFromRight (112).withSizeKeepingCentre (112, 28));

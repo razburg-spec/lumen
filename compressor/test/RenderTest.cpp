@@ -190,12 +190,24 @@ int main()
         p.ratio = 10.0f; p.inputDb = 20.0f; p.parallel = 0.0f;
         auto r = render (p, music);
         check (identical (r.in, r.out), "Parallel 0%: output is the untouched source");
-        p.saturation = 0.7f;
-        auto s = render (p, music);
-        check (std::abs (rmsDb (s.out) - rmsDb (s.in)) < 0.05f, "Parallel 0% with Saturation: the source passes at the same level");
         p.parallel = 0.5f;
         auto half = render (p, music);
         check (half.finite && ! identical (half.in, half.out), "Parallel 50%: blend of source and processed");
+    }
+
+    // 6b. Parallel and Saturation are independent: Saturation still works at Parallel 0%, and with the
+    //     compressor idle its result is the same at any Parallel setting.
+    {
+        const Signal tone = [] (int t, int) { return sine (t, 500.0f, 0.5f); };
+        ChromaEngine::Params p;
+        p.saturation = 0.7f; p.parallel = 0.0f;
+        auto atZero = render (p, tone);
+        const float thdZero = thdDb (atZero.out, 500.0f);
+        check (thdZero > -50.0f, "Parallel 0% with Saturation: the saturation is still heard (THD " + juce::String (thdZero, 1) + " dB)");
+        p.parallel = 0.5f;  auto atHalf = render (p, tone);
+        p.parallel = 1.0f;  auto atFull = render (p, tone);
+        check (identical (atZero.out, atHalf.out) && identical (atZero.out, atFull.out),
+               "Saturation sounds the same at Parallel 0%, 50% and 100%");
     }
 
     // 7. Freq Key: a key at 5 kHz reacts to a 5 kHz tone far more than to a 100 Hz tone of the same level.

@@ -77,17 +77,37 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 
     // Shimmer
     layout.add (std::make_unique<APB> (juce::ParameterID { shimOn, 1 }, "Shimmer On", false));
-    layout.add (std::make_unique<APF> (juce::ParameterID { shimPitchA, 1 }, "Pitch A", Range (-24.0f, 24.0f, 0.01f), 12.0f,
-                                       juce::AudioParameterFloatAttributes().withLabel ("st")));
-    layout.add (std::make_unique<APF> (juce::ParameterID { shimPitchB, 1 }, "Pitch B", Range (-24.0f, 24.0f, 0.01f), 7.0f,
-                                       juce::AudioParameterFloatAttributes().withLabel ("st")));
-    layout.add (std::make_unique<APF> (juce::ParameterID { shimGrainMs, 1 }, "Grain Size", skewed (10.0f, 2000.0f, 150.0f), 120.0f,
-                                       juce::AudioParameterFloatAttributes().withLabel ("ms")));
-    layout.add (std::make_unique<APC> (juce::ParameterID { shimReverse, 1 }, "Reverse",
-                                       juce::StringArray { "Off", "On", "Random" }, 0));
-    layout.add (pct (shimDensity, "Density", 50.0f));
-    layout.add (pct (shimSpray, "Spray", 10.0f));
-    layout.add (pct (shimFeedback, "Pitch Feedback", 30.0f));
+    const auto intervalText = [] (float v, int)
+    {
+        const int st = juce::roundToInt (v);
+        juce::String name;
+        switch (std::abs (st))
+        {
+            case 3: name = "min 3rd"; break;   case 4: name = "3rd"; break;     case 5: name = "4th"; break;
+            case 7: name = "5th"; break;       case 12: name = "Oct"; break;    case 19: name = "Oct+5th"; break;
+            case 24: name = "2 Oct"; break;    default: break;
+        }
+        const auto num = (st > 0 ? "+" : "") + juce::String (st);
+        return name.isEmpty() ? num : num + " " + name;
+    };
+    layout.add (std::make_unique<APF> (juce::ParameterID { shimPitchA, 1 }, "Interval A", Range (-24.0f, 24.0f, 1.0f), 12.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("st").withStringFromValueFunction (intervalText)));
+    layout.add (std::make_unique<APF> (juce::ParameterID { shimPitchB, 1 }, "Interval B", Range (-24.0f, 24.0f, 1.0f), 0.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("st")
+                                           .withStringFromValueFunction ([intervalText] (float v, int len)
+                                           {
+                                               return juce::roundToInt (v) == 0 ? juce::String ("Off") : intervalText (v, len);
+                                           })));
+    layout.add (pct (shimFeedback, "Shimmer", 50.0f));
+    layout.add (std::make_unique<APF> (juce::ParameterID { shimDecay, 1 }, "Shimmer Decay", skewed (0.5f, 30.0f, 6.0f), 6.0f,
+                                       juce::AudioParameterFloatAttributes().withLabel ("s")));
+    layout.add (pct (shimSize, "Shimmer Size", 70.0f));
+    layout.add (pct (shimDiffusion, "Shimmer Diffusion", 80.0f));
+    layout.add (pct (shimMod, "Shimmer Modulation", 30.0f));
+    layout.add (hz (shimTone, "Shimmer Tone", 1000.0f, 16000.0f, 5000.0f, 7000.0f));
+    layout.add (hz (shimLowCut, "Shimmer Low-Cut", 20.0f, 1000.0f, 200.0f, 200.0f));
+    layout.add (std::make_unique<APC> (juce::ParameterID { shimVoice, 1 }, "Shimmer Voice",
+                                       juce::StringArray { "Smooth", "Reverse" }, 0));
     layout.add (db (shimLevel, "Shimmer Level", -6.0f));
 
     // Reverb

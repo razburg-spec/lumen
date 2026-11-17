@@ -1,77 +1,162 @@
 #include "ShimmerEngine.h"
 
+namespace
+{
+    // Tank line lengths at Size = 1 (ms): spread out and mutually prime-ish so the modes interleave.
+    constexpr float lineMs[8] = { 47.3f, 56.9f, 64.1f, 73.7f, 82.3f, 93.1f, 104.9f, 117.7f };
+    // Input diffusers (ms), different per side for a wide image.
+    constexpr float diffMs[2][4] = { { 4.31f, 6.73f, 11.17f, 16.39f }, { 4.79f, 7.19f, 10.43f, 17.21f } };
+    // Sign patterns spread one signal over four lines without the lines summing coherently later.
+    constexpr float signs[8] = { 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f };
+
+    float sizeScale (float size) { return 0.3f + 1.2f * juce::jlimit (0.0f, 1.0f, size); }
+}
+
+//==============================================================================
+void ShimmerEngine::PitchShifter::prepare (float sr, uint32_t seed)
+{
+    sampleRate = sr;
+    baseLength = 0.085f * sr;          // window (grain) duration around 85 ms
+    minDelay = 0.0015f * sr;
+    powerCoeff = 1.0f - std::exp (-1.0f / (0.08f * sr));
+    // Longest sweep: +24 st forward (3 x window) or reverse (5 x window) with the 1.25 x random stretch.
+    line.setMaxSamples ((int) (baseLength * 1.25f * 5.2f + minDelay) + 64);
+    rng.state = seed;
+    reset();
+}
+
+void ShimmerEngine::PitchShifter::reset()
+{
+    line.clear();
+    inPower = outPower = 0.0f;
+    for (int h = 0; h < numHeads; ++h)
+    {
+        newLength (heads[h]);
+        heads[h].phase = (float) h / (float) numHeads;
+    }
+}
+
+void ShimmerEngine::PitchShifter::newLength (Head& h)
+{
+    h.length = baseLength * (0.75f + 0.5f * rng.next01());
+}
+
+void ShimmerEngine::PitchShifter::setShift (float semitones, bool rev)
+{
+    ratio = std::pow (2.0f, semitones / 12.0f);
+    reverse = rev;
+    bypass = ! rev && std::abs (semitones) < 0.01f;
+}
+
+float ShimmerEngine::PitchShifter::process (float x)
+{
+    line.push (x);
+    if (bypass)
+        return x;
+
+    // How fast the read delay changes per sample. Forward: 1 - ratio (shrinks when shifting up).
+    // Reverse: the head walks backwards at the pitched speed while the writer moves forward.
+    const float slope = reverse ? 1.0f + ratio : 1.0f - ratio;
+    const float sweepScale = std::abs (slope);
+    const bool shrinking = slope < 0.0f;
+
+    float sum = 0.0f, wsum = 0.0f;
+    for (auto& h : heads)
+    {
+        const float sweep = h.length * sweepScale;        // delay range covered in one window
+        const float d = minDelay + sweep * (shrinking ? 1.0f - h.phase : h.phase);
+        // Smooth bell window (a close, cheap stand-in for sin^2); the normalisation below absorbs the difference.
+        const float b = 4.0f * h.phase * (1.0f - h.phase);
+        const float w = b * b;
+        sum += w * line.readCubic (d);
+        wsum += w;
+
+        h.phase += 1.0f / h.length;
+        if (h.phase >= 1.0f)
+        {
+            h.phase -= 1.0f;
+            newLength (h);
+        }
+    }
+    const float y = sum / juce::jmax (0.5f, wsum);
+    inPower += powerCoeff * (x * x - inPower);
+    outPower += powerCoeff * (y * y - outPower);
+    // Power gain held at unity: up to +6 dB of make-up, never a boost above the input power.
+    const float makeup = juce::jlimit (1.0f, 2.0f, std::sqrt ((inPower + 1.0e-12f) / (outPower + 1.0e-12f)));
+    return y * makeup;
+}
+
+//==============================================================================
 void ShimmerEngine::prepare (const juce::dsp::ProcessSpec& spec)
 {
     sampleRate = (float) spec.sampleRate;
-    // Room for the longest grain read at +24 st (4x speed) plus spray.
-    const int cap = (int) (maxGrainSeconds * sampleRate * 5.0f) + 1024;
-    for (auto& c : capture) c.setMaxSamples (cap);
+    const float maxScale = sizeScale (1.0f);
+    const float maxMod = 0.004f * sampleRate;
 
-    window.resize (2048);
-    for (size_t i = 0; i < window.size(); ++i)
-        window[i] = 0.5f - 0.5f * std::cos (lumen::twoPi * (float) i / (float) (window.size() - 1));
-
-    level.reset (spec.sampleRate, 0.05);
+    for (int k = 0; k < numLines; ++k)
+    {
+        lines[k].setMaxSamples ((int) (lineMs[k] * 0.001f * sampleRate * maxScale + maxMod) + 16);
+        drift[k].seed (0x9E3779B9u * (uint32_t) (k + 1));
+        shiftA[k].prepare (sampleRate, 0x1234567u + (uint32_t) k * 7919u);
+        shiftB[k].prepare (sampleRate, 0x7654321u + (uint32_t) k * 104729u);
+    }
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        for (int i = 0; i < numDiffusers; ++i)
+            diffuser[ch][i].line.setMaxSamples ((int) (diffMs[ch][i] * 0.001f * sampleRate * maxScale) + 16);
+    }
+    amountSm.reset (spec.sampleRate, 0.08);
+    levelSm.reset (spec.sampleRate, 0.05);
     reset();
 }
 
 void ShimmerEngine::reset()
 {
-    for (auto& c : capture) c.clear();
-    for (auto& g : grains) g.active = false;
-    spawnCounter[0] = spawnCounter[1] = 0.0f;
-    fbState[0] = fbState[1] = 0.0f;
-    for (int ch = 0; ch < 2; ++ch) { fbHp[ch].reset(); fbLp[ch].reset(); }
-    level.setCurrentAndTargetValue (params.levelGain);
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        inHp[ch].reset(); inLp[ch].reset();
+        for (auto& d : diffuser[ch]) d.line.clear();
+    }
+    for (int k = 0; k < numLines; ++k)
+    {
+        lines[k].clear();
+        damping[k].reset();
+        dcBlock[k].reset();
+        shiftLp[k].reset(); shiftHp[k].reset();
+        shiftA[k].reset(); shiftB[k].reset();
+    }
+    lastSize = -1.0f;
+    updateCoefficients();
+    for (int k = 0; k < numLines; ++k)
+        lineSamples[k] = lineMs[k] * 0.001f * sampleRate * sizeScale (params.size);
+    amountSm.setCurrentAndTargetValue (params.amount);
+    levelSm.setCurrentAndTargetValue (params.levelGain);
 }
 
-void ShimmerEngine::spawnGrain (int layer)
+void ShimmerEngine::updateCoefficients()
 {
     const auto& p = params;
-    int slot = -1;
-    for (int i = 0; i < maxGrains; ++i)
-        if (! grains[(size_t) i].active) { slot = i; break; }
-    if (slot < 0) return;
-
-    const float semis = layer == 0 ? p.pitchA : p.pitchB;
-    const double rate = std::pow (2.0, (double) semis / 12.0);
-    const int length = juce::jmax (64, (int) (p.grainMs * 0.001f * sampleRate));
-
-    bool rev = p.reverse == 1 || (p.reverse == 2 && rng.next01() < 0.5f);
-
-    const double write = (double) capture[0].getWritePos();
-    const double sprayOffset = (double) (p.spray * rng.next01() * (float) length);
-    const double span = rate * (double) length;           // input samples a grain covers
-    double start;
-    double r;
-    if (! rev)
+    const float scale = sizeScale (p.size);
+    for (int ch = 0; ch < 2; ++ch)
     {
-        // Forward: the read head must never overtake the write head.
-        const double lag = juce::jmax (0.0, span - (double) length) + 8.0 + sprayOffset;
-        start = write - lag;
-        r = rate;
+        inHp[ch].setCutoff (p.lowCutHz, sampleRate);
+        inLp[ch].setCutoff (juce::jmin (16000.0f, p.toneHz * 1.6f), sampleRate);
+        for (int i = 0; i < numDiffusers; ++i)
+            diffuser[ch][i].delaySamples = diffMs[ch][i] * 0.001f * sampleRate * scale;
     }
-    else
+    for (int k = 0; k < numLines; ++k)
     {
-        // Reverse: start at the newest material and walk backwards.
-        start = write - 8.0 - sprayOffset;
-        r = -rate;
+        const float target = lineMs[k] * 0.001f * sampleRate * scale;
+        // Decay is set for the line's own length; highs fade faster above the Tone corner.
+        damping[k].set (target, juce::jmax (0.2f, p.decaySeconds), 1.0f, 0.45f, 400.0f, p.toneHz, sampleRate);
+        dcBlock[k].setCutoff (12.0f, sampleRate);
+        // Each pitched pass is filtered: the Tone keeps the climbing octaves from turning shrill,
+        // the Low-Cut keeps downward shifts from piling up mud.
+        shiftLp[k].setCutoff (p.toneHz, sampleRate);
+        shiftHp[k].setCutoff (p.lowCutHz, sampleRate);
+        shiftA[k].setShift (p.pitchA, p.voice == 1);
+        shiftB[k].setShift (p.pitchB, p.voice == 1);
     }
-
-    auto& g = grains[(size_t) slot];
-    g.active = true;
-    g.readPos = start;
-    g.rate = r;
-    g.length = length;
-    g.age = 0;
-
-    // Equal-power pan, scattered by spray; layers lean opposite ways for width.
-    const float lean = layer == 0 ? -0.15f : 0.15f;
-    const float pan = juce::jlimit (-1.0f, 1.0f, lean + p.spray * rng.nextBipolar());
-    const float angle = (pan + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
-    g.gainL = std::cos (angle) * 1.41421356f;
-    g.gainR = std::sin (angle) * 1.41421356f;
-    grainChannel[(size_t) slot] = layer;
 }
 
 void ShimmerEngine::process (juce::AudioBuffer<float>& buffer)
@@ -81,70 +166,80 @@ void ShimmerEngine::process (juce::AudioBuffer<float>& buffer)
     if (numCh == 0) return;
 
     const auto& p = params;
-    const int length = juce::jmax (64, (int) (p.grainMs * 0.001f * sampleRate));
-    // Overlap 2..8 grains per layer; Hann windows at overlap k sum to k/2.
-    const float overlap = 2.0f + p.density * 6.0f;
-    const float interval = (float) length / overlap;
-    // Overlapping pitch-shifted grains add up mostly incoherently, so normalise by power:
-    // Hann windows at overlap k have sum(w^2) = 3k/8. The two layers share the output (1/sqrt 2).
-    const float norm = 0.70710678f / std::sqrt (0.375f * overlap);
-    // With power normalisation the loop is close to unity, so 100 % gives a long cascade.
-    const float fb = juce::jlimit (0.0f, 1.0f, p.feedback) * 1.05f;
+    updateCoefficients();
+    amountSm.setTargetValue (juce::jlimit (0.0f, 1.0f, p.amount));
+    levelSm.setTargetValue (p.levelGain);
 
-    for (int ch = 0; ch < 2; ++ch)
-    {
-        fbHp[ch].setCutoff (150.0f, sampleRate);
-        fbLp[ch].setCutoff (12000.0f, sampleRate);
-    }
-    level.setTargetValue (p.levelGain);
+    const float scale = sizeScale (p.size);
+    float targetLen[numLines];
+    for (int k = 0; k < numLines; ++k)
+        targetLen[k] = lineMs[k] * 0.001f * sampleRate * scale;
+    // Size glides over about half a second rather than jumping.
+    const float glide = 1.0f - std::exp (-1.0f / (0.15f * sampleRate));
+
+    const float g = 0.45f + 0.3f * juce::jlimit (0.0f, 1.0f, p.diffusion);        // diffuser coefficient
+    const float modSamples = juce::jlimit (0.0f, 1.0f, p.modulation) * 0.0016f * sampleRate;
+    const float modRate = 0.25f + 0.9f * p.modulation;
+    const bool useB = std::abs (p.pitchB) >= 0.01f;
+    // With two intervals, A leads and B sits a little under it (equal-power split).
+    const float wA = useB ? 0.8f : 1.0f, wB = useB ? 0.6f : 0.0f;
+    // The shifter's crossfades lose a little power on diffuse material; this restores it (measured).
+    constexpr float maxShiftPower = 0.25f;
 
     auto* L = buffer.getWritePointer (0);
     auto* R = numCh > 1 ? buffer.getWritePointer (1) : nullptr;
-    const float winScale = (float) (window.size() - 1);
 
     for (int i = 0; i < n; ++i)
     {
-        const float inL = L[i];
-        const float inR = R ? R[i] : inL;
+        const float s = amountSm.getNextValue();
+        // Share of the energy that is shifted on each trip round the tank. It stays small: the plain part
+        // has to last the whole decay, while the pitched part builds up an octave at a time on top of it.
+        const float shiftPower = maxShiftPower * s * s;
+        const float plainGain = std::sqrt (1.0f - shiftPower);
+        const float shiftGain = std::sqrt (shiftPower);
+        // The octaves that climb past the Tone filter take energy out of the loop; a little extra gain on
+        // the pitched path gives it back, so high Shimmer settings keep ringing instead of thinning out.
+        const float shiftMakeup = 1.0f + 0.1f * s;
 
-        // Capture input plus filtered feedback of our own output.
-        capture[0].push (inL + fbState[0]);
-        capture[1].push (inR + fbState[1]);
-
-        for (int layer = 0; layer < 2; ++layer)
+        // Input: band-limit, then diffuse.
+        float in[2] = { L[i], R ? R[i] : L[i] };
+        for (int ch = 0; ch < 2; ++ch)
         {
-            spawnCounter[layer] -= 1.0f;
-            if (spawnCounter[layer] <= 0.0f)
-            {
-                spawnGrain (layer);
-                // Small jitter avoids a buzzy, periodic grain rate.
-                spawnCounter[layer] += interval * (1.0f + 0.2f * p.spray * rng.nextBipolar());
-            }
+            float x = inLp[ch].lowpass (inHp[ch].highpass (in[ch]));
+            for (auto& d : diffuser[ch])
+                x = d.process (x, g);
+            in[ch] = x;
         }
 
-        float outL = 0.0f, outR = 0.0f;
-        for (int gi = 0; gi < maxGrains; ++gi)
+        // Read the tank, apply decay and tone.
+        float f[numLines];
+        float sum = 0.0f;
+        for (int k = 0; k < numLines; ++k)
         {
-            auto& g = grains[(size_t) gi];
-            if (! g.active) continue;
-            const float w = window[(size_t) ((float) g.age / (float) g.length * winScale)];
-            const float sL = capture[0].readAbsolute (g.readPos);
-            const float sR = capture[1].readAbsolute (g.readPos);
-            const float mono = 0.5f * (sL + sR);
-            // Keep some of the source's own stereo image, add the grain's pan.
-            outL += w * (0.5f * sL + 0.5f * mono * g.gainL);
-            outR += w * (0.5f * sR + 0.5f * mono * g.gainR);
-            g.readPos += g.rate;
-            if (++g.age >= g.length) g.active = false;
+            lineSamples[k] += glide * (targetLen[k] - lineSamples[k]);
+            const float mod = modSamples * drift[k].next (modRate * (0.8f + 0.06f * (float) k), sampleRate);
+            f[k] = dcBlock[k].highpass (damping[k].process (lines[k].readCubic (lineSamples[k] + mod + modSamples)));
+            sum += f[k];
         }
-        outL *= norm;
-        outR *= norm;
 
-        fbState[0] = lumen::softClip (fbLp[0].lowpass (fbHp[0].highpass (outL)) * fb);
-        fbState[1] = lumen::softClip (fbLp[1].lowpass (fbHp[1].highpass (outR)) * fb);
+        // Householder mix (orthogonal), then each line is split between the plain and the pitched path.
+        const float hh = sum * (2.0f / (float) numLines);
+        for (int k = 0; k < numLines; ++k)
+        {
+            const float y = f[k] - hh;
+            float pitched = wA * shiftA[k].process (y);
+            if (useB) pitched += wB * shiftB[k].process (y);
+            else      shiftB[k].push (y);
+            pitched = shiftLp[k].lowpass (shiftHp[k].highpass (pitched)) * shiftMakeup;
+            const float x = 0.5f * signs[(k + 3) & 7] * in[k & 1] + plainGain * y + shiftGain * pitched;
+            // Soft safety in the loop: transparent at normal levels.
+            lines[k].push (std::abs (x) < 1.0f ? x : lumen::softClip (x));
+        }
 
-        const float g = level.getNextValue();
-        L[i] = outL * g;
-        if (R) R[i] = outR * g;
+        const float outL = 0.5f * (f[0] + f[2] - f[4] + f[6]);
+        const float outR = 0.5f * (f[1] - f[3] + f[5] + f[7]);
+        const float lv = levelSm.getNextValue();
+        L[i] = outL * lv;
+        if (R) R[i] = outR * lv;
     }
 }

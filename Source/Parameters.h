@@ -30,13 +30,16 @@ namespace ParamID
 
     // Shimmer
     inline constexpr auto shimOn       = "shimOn";
-    inline constexpr auto shimPitchA   = "shimPitchA";
-    inline constexpr auto shimPitchB   = "shimPitchB";
-    inline constexpr auto shimGrainMs  = "shimGrainMs";
-    inline constexpr auto shimReverse  = "shimReverse";    // Off / On / Random
-    inline constexpr auto shimDensity  = "shimDensity";
-    inline constexpr auto shimSpray    = "shimSpray";
-    inline constexpr auto shimFeedback = "shimFeedback";
+    inline constexpr auto shimPitchA   = "shimPitchA";     // Interval A, semitones
+    inline constexpr auto shimPitchB   = "shimPitchB";     // Interval B, semitones (0 = off)
+    inline constexpr auto shimFeedback = "shimFeedback";   // Shimmer amount: share of each pass that is pitch shifted
+    inline constexpr auto shimDecay    = "shimDecay";
+    inline constexpr auto shimSize     = "shimSize";
+    inline constexpr auto shimDiffusion = "shimDiffusion";
+    inline constexpr auto shimMod      = "shimMod";
+    inline constexpr auto shimTone     = "shimTone";
+    inline constexpr auto shimLowCut   = "shimLowCut";
+    inline constexpr auto shimVoice    = "shimVoice";      // Smooth / Reverse
     inline constexpr auto shimLevel    = "shimLevel";
 
     // Reverb

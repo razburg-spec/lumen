@@ -52,6 +52,6 @@ private:
     };
     Raw crossFeed,
         dTime, dSync, dDiv, dFb, dMode, dChar, dHc, dLc, dDrive, dModRate, dModDepth, dDuck, dFreeze, dLevel,
-        sPitchA, sPitchB, sGrain, sReverse, sDensity, sSpray, sFb, sLevel,
+        sPitchA, sPitchB, sFb, sDecay, sSize, sDiff, sMod, sTone, sLowCut, sVoice, sLevel,
         rMode, rColor, rPre, rDecay, rSize, rDiff, rModRate, rModDepth, rHc, rLc, rWidth, rLevel;
 };

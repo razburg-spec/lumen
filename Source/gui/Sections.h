@@ -8,7 +8,7 @@ class EngineSection : public juce::Component
 public:
     EngineSection (APVTS&, const juce::String& title, const juce::String& subtitle, juce::Colour accent, const char* onParamID);
 
-    void setAdvanced (bool);
+    virtual void setAdvanced (bool);
     virtual void poll();
 
     void paint (juce::Graphics&) override;
@@ -54,10 +54,20 @@ private:
     Knob division;
 };
 
+// In the Classic voice (the original grain engine, used by sessions from before 0.4.0) the Advanced
+// block shows that engine's own controls instead of the reverb ones.
 class ShimmerSection : public EngineSection
 {
 public:
     explicit ShimmerSection (APVTS&);
+    void setAdvanced (bool) override;
+    void poll() override;
+    void resized() override;
+
+private:
+    void updateAdvancedSet();
+    juce::OwnedArray<Knob> classicKnobs;
+    bool advancedShown = false, classicShown = false;
 };
 
 class ReverbSection : public EngineSection

@@ -26,6 +26,7 @@ void Router::attach (juce::AudioProcessorValueTreeState& apvts)
     sDecay = raw (shimDecay);    sSize = raw (shimSize);      sDiff = raw (shimDiffusion);
     sMod = raw (shimMod);        sTone = raw (shimTone);      sLowCut = raw (shimLowCut);
     sVoice = raw (shimVoice);    sLevel = raw (shimLevel);
+    sGrain = raw (shimGrainMs);  sReverse = raw (shimReverse); sDensity = raw (shimDensity); sSpray = raw (shimSpray);
 
     rMode = raw (revMode);       rColor = raw (revColor);     rPre = raw (revPreDelay);
     rDecay = raw (revDecay);     rSize = raw (revSize);       rDiff = raw (revDiffusion);
@@ -71,7 +72,16 @@ void Router::pullParameters()
     s.toneHz = sTone.get (7000.0f);
     s.lowCutHz = sLowCut.get (200.0f);
     s.voice = (int) sVoice.get (0.0f);
+    // Classic voice: the 0.3.x mapping, unchanged (Shimmer = pitch feedback).
+    s.classic.pitchA = s.pitchA;
+    s.classic.pitchB = sPitchB.get (0.0f);
+    s.classic.grainMs = sGrain.get (120.0f);
+    s.classic.reverse = (int) sReverse.get (0.0f);
+    s.classic.density = sDensity.get (50.0f) / 100.0f;
+    s.classic.spray = sSpray.get (10.0f) / 100.0f;
+    s.classic.feedback = s.amount;
     s.levelGain = dbToGain (sLevel.get (-6.0f));
+    s.classic.levelGain = s.levelGain;
     shimmer.setParams (s);
 
     ReverbEngine::Params r;

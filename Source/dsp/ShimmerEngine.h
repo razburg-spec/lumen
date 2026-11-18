@@ -1,6 +1,7 @@
 #pragma once
 #include "DspUtils.h"
 #include <array>
+#include "GrainShimmer.h"
 
 // Shimmer reverb: a dense, modulated reverb tank with pitch shifters inside its feedback loop.
 // Every time the tail goes round the loop, part of it is shifted by Interval A (and B), so the
@@ -33,7 +34,8 @@ public:
         float modulation = 0.3f;     // 0..1
         float toneHz = 7000.0f;      // low-pass inside the loop
         float lowCutHz = 200.0f;     // high-pass inside the loop
-        int voice = 0;               // 0 Smooth, 1 Reverse
+        int voice = 0;               // 0 Smooth, 1 Reverse, 2 Classic (the original grain engine)
+        GrainShimmer::Params classic;     // used by the Classic voice only
         float levelGain = 0.5f;
     };
 
@@ -73,6 +75,10 @@ private:
     static constexpr int numDiffusers = 4;
 
     void updateCoefficients();
+    void processReverb (juce::AudioBuffer<float>&);
+
+    GrainShimmer classicEngine;
+    bool classicActive = false;
 
     Params params;
     float sampleRate = 44100.0f;

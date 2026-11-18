@@ -51,7 +51,7 @@ A shimmer reverb: a lush, modulated reverb with pitch shifters inside its feedba
 - Interval B: a second, quieter voice, for example +7 over the octave, or -12 for an octave down underneath. Off at 0.
 - Shimmer: how much of the tail is pitch shifted on each pass, which sets how fast and how far the sound climbs. Low values add a gentle halo; high values bloom into a rising cloud.
 - Level: output level of the shimmer.
-- Voice: Smooth, or Reverse (each fragment of the shifted sound plays backwards: softer, like an organ).
+- Voice: Smooth, Reverse (each fragment of the shifted sound plays backwards: softer, like an organ) or Classic, the original grain shimmer of Lumen 0.3. Projects saved with Lumen 0.3 open in Classic, so they sound exactly as before; in Classic the Advanced block shows Grain, Density, Spray and Reverse.
 - Advanced: Decay (length of the tail), Size (size of the space; bigger also climbs more slowly), Diffusion (how quickly echoes melt into a smooth wash), Mod (gentle movement that keeps the tail lush), Tone (how high the climbing octaves may go before they are softened) and Low-Cut (keeps low end and downward shifts from getting muddy).
 - Tip: for the classic sound start with Interval A at +12, Shimmer around 50 % and a long Decay, then use Tone to choose between a soft glow and a bright sparkle.
 

@@ -222,44 +222,7 @@ ShimmerSection::ShimmerSection (APVTS& s)
     addAdvanced (ParamID::shimLowCut, "Low-Cut");
 
     addCombo (ParamID::shimVoice);
-
-    for (auto [id, name] : { std::pair { ParamID::shimGrainMs, "Grain" }, std::pair { ParamID::shimDensity, "Density" },
-                             std::pair { ParamID::shimSpray, "Spray" }, std::pair { ParamID::shimReverse, "Reverse" } })
-        addChildComponent (classicKnobs.add (new Knob (s, id, name, accent, Knob::Size::Small)));
     poll();
-}
-
-void ShimmerSection::setAdvanced (bool shouldShow)
-{
-    advancedShown = shouldShow;
-    EngineSection::setAdvanced (shouldShow);
-    updateAdvancedSet();
-}
-
-void ShimmerSection::poll()
-{
-    EngineSection::poll();
-    const bool classic = juce::roundToInt (state.getRawParameterValue (ParamID::shimVoice)->load()) == 2;
-    if (classic != classicShown)
-    {
-        classicShown = classic;
-        updateAdvancedSet();
-    }
-}
-
-void ShimmerSection::updateAdvancedSet()
-{
-    for (auto* k : advancedKnobs) k->setVisible (advancedShown && ! classicShown);
-    for (auto* k : classicKnobs)  k->setVisible (advancedShown && classicShown);
-    resized();
-}
-
-void ShimmerSection::resized()
-{
-    EngineSection::resized();
-    // The Classic knobs take the first slots of the Advanced grid.
-    for (int i = 0; i < classicKnobs.size() && i < advancedKnobs.size(); ++i)
-        classicKnobs[i]->setBounds (advancedKnobs[i]->getBounds());
 }
 
 ReverbSection::ReverbSection (APVTS& s)

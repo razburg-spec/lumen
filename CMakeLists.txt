@@ -53,7 +53,6 @@ target_sources(Lumen PRIVATE
     Source/Parameters.cpp
     Source/dsp/DelayEngine.cpp
     Source/dsp/ShimmerEngine.cpp
-    Source/dsp/GrainShimmer.cpp
     Source/dsp/ReverbEngine.cpp
     Source/dsp/FdnReverb.cpp
     Source/dsp/ChamberReverb.cpp

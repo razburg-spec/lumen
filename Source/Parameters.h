@@ -39,12 +39,7 @@ namespace ParamID
     inline constexpr auto shimMod      = "shimMod";
     inline constexpr auto shimTone     = "shimTone";
     inline constexpr auto shimLowCut   = "shimLowCut";
-    inline constexpr auto shimVoice    = "shimVoice";      // Smooth / Reverse / Classic
-    // Classic voice only (the original 0.3.x grain engine, kept for older sessions):
-    inline constexpr auto shimGrainMs  = "shimGrainMs";
-    inline constexpr auto shimReverse  = "shimReverse";    // Off / On / Random
-    inline constexpr auto shimDensity  = "shimDensity";
-    inline constexpr auto shimSpray    = "shimSpray";
+    inline constexpr auto shimVoice    = "shimVoice";      // Smooth / Reverse
     inline constexpr auto shimLevel    = "shimLevel";
 
     // Reverb

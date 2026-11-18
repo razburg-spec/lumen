@@ -105,7 +105,6 @@ void ShimmerEngine::prepare (const juce::dsp::ProcessSpec& spec)
         for (int i = 0; i < numDiffusers; ++i)
             diffuser[ch][i].line.setMaxSamples ((int) (diffMs[ch][i] * 0.001f * sampleRate * maxScale) + 16);
     }
-    classicEngine.prepare (spec);
     amountSm.reset (spec.sampleRate, 0.08);
     levelSm.reset (spec.sampleRate, 0.05);
     reset();
@@ -113,9 +112,6 @@ void ShimmerEngine::prepare (const juce::dsp::ProcessSpec& spec)
 
 void ShimmerEngine::reset()
 {
-    classicEngine.setParams (params.classic);
-    classicEngine.reset();
-    classicActive = params.voice == 2;
     for (int ch = 0; ch < 2; ++ch)
     {
         inHp[ch].reset(); inLp[ch].reset();
@@ -163,26 +159,6 @@ void ShimmerEngine::updateCoefficients()
 }
 
 void ShimmerEngine::process (juce::AudioBuffer<float>& buffer)
-{
-    // Classic voice: the original grain engine, exactly as in 0.3.x. Switching voices starts the
-    // newly chosen engine from silence.
-    const bool wantClassic = params.voice == 2;
-    if (wantClassic != classicActive)
-    {
-        classicActive = wantClassic;
-        if (classicActive) { classicEngine.setParams (params.classic); classicEngine.reset(); }
-        else               { auto keep = params; reset(); params = keep; }
-    }
-    if (classicActive)
-    {
-        classicEngine.setParams (params.classic);
-        classicEngine.process (buffer);
-        return;
-    }
-    processReverb (buffer);
-}
-
-void ShimmerEngine::processReverb (juce::AudioBuffer<float>& buffer)
 {
     const int numCh = juce::jmin (2, buffer.getNumChannels());
     const int n = buffer.getNumSamples();

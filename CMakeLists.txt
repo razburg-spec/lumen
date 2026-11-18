@@ -31,7 +31,12 @@ if(APPLE OR WIN32)
 endif()
 message(STATUS "Lumen formats: ${LUMEN_FORMATS}")
 
+# CFBundleVersion: give every release build a unique value (e.g. -DRBA_BUILD_VERSION=1.2.3.202611181930)
+# so hosts that cache plug-ins by version rescan after an update.
+set(RBA_BUILD_VERSION "${PROJECT_VERSION}" CACHE STRING "CFBundleVersion of the built bundles")
+
 juce_add_plugin(Lumen
+    BUILD_VERSION "${RBA_BUILD_VERSION}"
     COMPANY_NAME "Raz Burg AudioCrafts"
     BUNDLE_ID "com.razburgaudiocrafts.lumen"
     PLUGIN_MANUFACTURER_CODE Rzau

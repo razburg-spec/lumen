@@ -28,8 +28,18 @@ cp -R "$ART/VST3/$PLUGIN.vst3" "$WORK/vst3/"; sign "$WORK/vst3/$PLUGIN.vst3"
 cp -R "$ART/AU/$PLUGIN.component" "$WORK/au/"; sign "$WORK/au/$PLUGIN.component"
 
 ID=com.razburgaudiocrafts.$(echo "$PLUGIN" | tr "[:upper:]" "[:lower:]")
-pkgbuild --root "$WORK/vst3" --install-location "/Library/Audio/Plug-Ins/VST3" --identifier $ID.vst3 --version "$VERSION" "$WORK/vst3.pkg"
-pkgbuild --root "$WORK/au" --install-location "/Library/Audio/Plug-Ins/Components" --identifier $ID.au --version "$VERSION" "$WORK/au.pkg"
+# Each component pkg gets a postinstall that sets the installed bundle's modification time to now:
+# Pro Tools (AAXPlugInCache) and Logic (AU cache) key their caches on it, so an update is rescanned.
+scripts() {  # scripts <dir> <installed bundle path>
+    mkdir -p "$1"
+    printf '#!/bin/sh\n/usr/bin/touch "%s"\n[ -d "%s/Contents" ] && /usr/bin/touch "%s/Contents" "%s/Contents/Info.plist"\nexit 0\n' "$2" "$2" "$2" "$2" > "$1/postinstall"
+    chmod 755 "$1/postinstall"
+}
+scripts "$WORK/scripts-vst3" "/Library/Audio/Plug-Ins/VST3/$PLUGIN.vst3"
+scripts "$WORK/scripts-au" "/Library/Audio/Plug-Ins/Components/$PLUGIN.component"
+
+pkgbuild --scripts "$WORK/scripts-vst3" --root "$WORK/vst3" --install-location "/Library/Audio/Plug-Ins/VST3" --identifier $ID.vst3 --version "$VERSION" "$WORK/vst3.pkg"
+pkgbuild --scripts "$WORK/scripts-au" --root "$WORK/au" --install-location "/Library/Audio/Plug-Ins/Components" --identifier $ID.au --version "$VERSION" "$WORK/au.pkg"
 CHOICES='<choice id="vst3" title="VST3"><pkg-ref id="'$ID'.vst3"/></choice><choice id="au" title="Audio Unit"><pkg-ref id="'$ID'.au"/></choice>'
 OUTLINE='<line choice="vst3"/><line choice="au"/>'
 REFS='<pkg-ref id="'$ID'.vst3">vst3.pkg</pkg-ref><pkg-ref id="'$ID'.au">au.pkg</pkg-ref>'
@@ -38,7 +48,8 @@ if [[ -n "${WRAPTOOL:-}" && -n "${PACE_ACCOUNT:-}" ]]; then
     mkdir -p "$WORK/aax"
     "$WRAPTOOL" sign --verbose --account "$PACE_ACCOUNT" ${PACE_WCGUID:+--wcguid "$PACE_WCGUID"} \
         --signid "$DEV_ID_APP" --extrasigningoptions "--timestamp --options runtime" --in "$ART/AAX/$PLUGIN.aaxplugin" --out "$WORK/aax/$PLUGIN.aaxplugin"
-    pkgbuild --root "$WORK/aax" --install-location "/Library/Application Support/Avid/Audio/Plug-Ins" --identifier $ID.aax --version "$VERSION" "$WORK/aax.pkg"
+    scripts "$WORK/scripts-aax" "/Library/Application Support/Avid/Audio/Plug-Ins/$PLUGIN.aaxplugin"
+    pkgbuild --scripts "$WORK/scripts-aax" --root "$WORK/aax" --install-location "/Library/Application Support/Avid/Audio/Plug-Ins" --identifier $ID.aax --version "$VERSION" "$WORK/aax.pkg"
     CHOICES+='<choice id="aax" title="AAX (Pro Tools)"><pkg-ref id="'$ID'.aax"/></choice>'
     OUTLINE+='<line choice="aax"/>'; REFS+='<pkg-ref id="'$ID'.aax">aax.pkg</pkg-ref>'
 else

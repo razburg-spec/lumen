@@ -38,6 +38,59 @@ Design PrismEngine::design (int band, const BandParams& p, int mode, double samp
     return d;
 }
 
+int PrismEngine::linearLength (double sampleRate)
+{
+    // About 170 ms of filter at any rate: enough resolution for a steep cut at 20 Hz.
+    return sampleRate <= 50000.0 ? 8192 : (sampleRate <= 100000.0 ? 16384 : 32768);
+}
+
+juce::AudioBuffer<float> PrismEngine::buildLinearIr (const Params& params, double sampleRate)
+{
+    const int n = linearLength (sampleRate);
+    const int order = juce::roundToInt (std::log2 ((double) n));
+    juce::dsp::FFT fft (order);
+
+    std::array<Design, Band::numBands> designs;
+    std::array<bool, Band::numBands> active {};
+    for (int b = 0; b < Band::numBands; ++b)
+    {
+        active[(size_t) b] = params.bands[(size_t) b].on;
+        if (active[(size_t) b])
+            designs[(size_t) b] = design (b, params.bands[(size_t) b], params.mode, sampleRate);
+    }
+
+    // Zero-phase spectrum: the magnitude of the whole EQ on every bin.
+    std::vector<float> data ((size_t) n * 2, 0.0f);
+    for (int k = 0; k <= n / 2; ++k)
+    {
+        const double w = 2.0 * pi * (double) k / (double) n;
+        double m = 1.0;
+        for (int b = 0; b < Band::numBands; ++b)
+            if (active[(size_t) b])
+                m *= designs[(size_t) b].magnitude (juce::jmin (w, pi * 0.99999));
+        data[(size_t) (2 * k)] = (float) m;
+    }
+    fft.performRealOnlyInverseTransform (data.data());
+
+    // The result is centred on sample 0 and wraps around: move the centre to n/2 and window it.
+    juce::AudioBuffer<float> ir (1, n);
+    auto* out = ir.getWritePointer (0);
+    for (int i = 0; i < n; ++i)
+    {
+        const int src = (i + n / 2) % n;
+        const double x = (double) i / (double) n;
+        const double window = 0.42 - 0.5 * std::cos (2.0 * pi * x) + 0.08 * std::cos (4.0 * pi * x);   // Blackman
+        out[i] = (float) (data[(size_t) src] * window);
+    }
+    return ir;
+}
+
+void PrismEngine::loadLinearIr (juce::AudioBuffer<float>&& ir)
+{
+    convolution.loadImpulseResponse (std::move (ir), sr, juce::dsp::Convolution::Stereo::no,
+                                     juce::dsp::Convolution::Trim::no, juce::dsp::Convolution::Normalise::no);
+}
+
 void PrismEngine::prepare (double sampleRate, int maxBlock, int numChannels)
 {
     sr = sampleRate;
@@ -65,6 +118,9 @@ void PrismEngine::prepare (double sampleRate, int maxBlock, int numChannels)
     monoSize = juce::jmax (1, maxBlock);
     mono.allocate ((size_t) monoSize, true);
     first = true;
+    wasLinear = false;
+    convolution.prepare ({ sampleRate, (juce::uint32) juce::jmax (1, maxBlock), (juce::uint32) juce::jlimit (1, maxChannels, numChannels) });
+    convolution.reset();
 }
 
 void PrismEngine::updateBand (int index, const BandParams& p, int mode)
@@ -271,14 +327,30 @@ void PrismEngine::process (juce::AudioBuffer<float>& buffer, const Params& param
     meters.inputPeak.store (juce::jmax (meters.inputPeak.load(), inPeak));
     feedTap (preTap);
 
-    for (int b = 0; b < Band::numBands; ++b)
-        updateBand (b, params.bands[(size_t) b], params.mode);
+    if (params.linear)
+    {
+        if (! wasLinear)
+            convolution.reset();
+        wasLinear = true;
+        juce::dsp::AudioBlock<float> block (buffer.getArrayOfWritePointers(), (size_t) numCh, (size_t) numSamples);
+        convolution.process (juce::dsp::ProcessContextReplacing<float> (block));
+    }
+    else if (wasLinear)
+    {
+        // Back from Linear Phase: start the biquads fresh with the current settings.
+        wasLinear = false;
+        first = true;
+    }
+
+    if (! params.linear)
+        for (int b = 0; b < Band::numBands; ++b)
+            updateBand (b, params.bands[(size_t) b], params.mode);
     outGain.setTargetValue (juce::Decibels::decibelsToGain (params.outputDb));
     if (first)
         outGain.setCurrentAndTargetValue (outGain.getTargetValue());
     first = false;
 
-    for (int start = 0; start < numSamples; start += chunk)
+    for (int start = 0; start < (params.linear ? 0 : numSamples); start += chunk)
     {
         const int n = juce::jmin (chunk, numSamples - start);
         for (int b = 0; b < Band::numBands; ++b)

@@ -15,8 +15,27 @@ Prism is a six-band EQ with six characters. The controls are the same in every m
 
 - The gray spectrum is your source before the EQ; the colored spectrum is the result after it. Choose PRE + POST, POST or OFF at the top left.
 - The white line is the full EQ curve; each band's own curve is shaded in its color.
-- Drag a point to set frequency and gain. Hold Shift to change only the frequency, and Cmd/Ctrl for fine moves.
-- Scroll over a point to change its Q. Double-click a point to switch the band on or off. Dragging a band that is off switches it on.
+
+## Working on the graph
+
+Everything can be done right on the graph:
+
+- Drag a point: frequency and gain together. A cut moves in frequency only.
+- Shift-drag: locks to the first direction you move, so you change only the frequency or only the gain.
+- Option/Alt-drag up or down: Q (up = narrower, down = wider).
+- Drag the two small width dots beside a selected bell: set its width directly.
+- Cmd/Ctrl while dragging or scrolling: fine control.
+- Scroll over a point: Q. Option/Alt + scroll: gain. Shift + scroll: frequency.
+- Double-click a point: switch the band on or off. Dragging a band that is off switches it on.
+- Double-click an empty spot: brings the nearest free band there (one that is off first), at that frequency and gain.
+- Option/Alt-click a point without moving: reset the band.
+- Right-click a point: menu with On, Cut or Shelf, cut slope and Reset band.
+
+## Linear Phase
+
+- Switch Linear Phase at the top right of the display. The EQ then shifts no phase at all: the same curve, with every frequency kept perfectly in time. Use it on the mix bus and in mastering, or on one of several tracks that share a source (drums, layered parts).
+- Linear Phase adds about 85 ms of latency at 44.1 or 48 kHz; the host compensates for it automatically. Very steep cuts below about 40 Hz are a little gentler than in normal mode.
+- With Linear Phase off, Prism has zero latency.
 
 ## Bands
 
@@ -39,4 +58,4 @@ Prism is a six-band EQ with six characters. The controls are the same in every m
 
 - Prism opens flat and passes the audio untouched. Reset returns to that state.
 - Undo and Redo keep up to 100 steps. Double-click a knob to reset it.
-- Zero latency.
+- Zero latency (unless Linear Phase is on).

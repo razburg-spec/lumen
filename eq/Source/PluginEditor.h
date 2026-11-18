@@ -36,6 +36,8 @@ private:
     juce::Rectangle<int> outputCard;
     Knob drive, output;
     LevelMeter inMeter { "IN" }, outMeter { "OUT" };
+    PillToggle linearPhase { "Linear Phase", Theme::modeColour (4) };
+    APVTS::ButtonAttachment linearAttachment;
 
     PresetBar presets;
     ToolButton undoButton { "Undo", ToolButton::Glyph::undo }, redoButton { "Redo", ToolButton::Glyph::redo },

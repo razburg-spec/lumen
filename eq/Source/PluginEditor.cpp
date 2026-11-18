@@ -17,10 +17,13 @@ PrismView::PrismView (PrismProcessor& p)
       display (p),
       drive  (p.apvts, ParamID::drive,  "Drive",  Theme::modeColour (4), Knob::Size::Large),
       output (p.apvts, ParamID::output, "Output", Theme::modeColour (4), Knob::Size::Large, true),
+      linearAttachment (p.apvts, ParamID::linear, linearPhase),
       presets (p.apvts, p.history)
 {
     addAndMakeVisible (modes);
     addAndMakeVisible (display);
+    addAndMakeVisible (linearPhase);
+    linearPhase.setTooltip ("Linear Phase: no phase shift at all, for mastering and parallel tracks. Adds latency (the host compensates).");
     for (int b = 0; b < Band::numBands; ++b)
     {
         auto* s = strips.add (new BandStrip (p.apvts, b));
@@ -69,6 +72,7 @@ void PrismView::applyModeColour (int mode)
     const auto c = Theme::modeColour (mode);
     drive.setAccent (c);
     output.setAccent (c);
+    linearPhase.setAccent (c);
     inMeter.setAccent (c);
     outMeter.setAccent (c);
     display.repaint();
@@ -159,7 +163,7 @@ void PrismView::paint (juce::Graphics& g)
     g.drawText (juce::String::fromUTF8 ("RAZ BURG AUDIOCRAFTS  \xc2\xb7  ") + juce::String (JucePlugin_Name).toUpperCase() + " " + JucePlugin_VersionString,
                 footer, juce::Justification::centredLeft, false);
     g.setFont (Theme::font (11.0f));
-    g.drawText (juce::String::fromUTF8 ("Drag a point: frequency and gain  \xc2\xb7  Scroll: Q  \xc2\xb7  Double-click: on / off  \xc2\xb7  Shift: frequency only"),
+    g.drawText (juce::String::fromUTF8 ("Drag: freq + gain  \xc2\xb7  Option/Alt-drag or scroll: Q  \xc2\xb7  Shift: lock direction  \xc2\xb7  Right-click: menu"),
                 footer, juce::Justification::centredRight, false);
 }
 
@@ -185,6 +189,7 @@ void PrismView::resized()
     undoButton.setBounds (toolbar.removeFromRight (34));
 
     display.setBounds (r.removeFromTop (displayHeight));
+    linearPhase.setBounds (display.getRight() - 30 - 12 - 116, display.getY() + 10, 116, 22);
     r.removeFromTop (gap);
     r.removeFromBottom (4);
 

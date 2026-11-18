@@ -39,6 +39,7 @@ namespace ParamID
 {
     inline constexpr auto mode   = "mode";     // Vintage / Retro / Chubby / Indie / Modern / Bus
     inline constexpr auto output = "output";   // output gain
+    inline constexpr auto linear = "linear";   // Linear Phase: no phase shift, adds latency
     inline constexpr auto drive  = "drive";    // pushes the mode's analog stage (0 = clean, bit-exact)
 
     // Per-band names (see Band::id)

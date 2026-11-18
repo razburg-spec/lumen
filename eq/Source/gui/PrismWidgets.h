@@ -95,6 +95,21 @@ private:
     void drawSpectrum (juce::Graphics&, const Spectrum&, juce::Colour fill, juce::Colour line);
     void drawNodeBubble (juce::Graphics&, int band);
 
+    struct Hit { int band = -1, side = 0; };   // side: -1 / +1 = a width handle, 0 = the point itself
+    Hit hitTest (juce::Point<float>) const;
+    bool hasHandles (int band) const;
+    juce::Point<float> handlePosition (int band, int side) const;
+    void beginGestures (int band);
+    void endGestures (int band);
+    void setAsStep (const juce::String& id, float plain);
+    void resetBand (int band);
+    void showBandMenu (int band);
+
+    enum class DragMode { move, q, width };
+    DragMode dragMode = DragMode::move;
+    int dragSide = 0, hoveredSide = 0, axisLock = 0;
+    float startFreq = 1000.0f, startGain = 0.0f, startQ = 1.0f;
+
     PrismProcessor& processor;
     Spectrum pre, post;
     PrismEngine::Params params;

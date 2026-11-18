@@ -30,6 +30,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 
     // The defaults leave the signal untouched: every band at 0 dB, both cuts off, output at 0 dB.
     layout.add (std::make_unique<APC> (juce::ParameterID { mode, 1 }, "Mode", modeNames(), 4));
+    layout.add (std::make_unique<APB> (juce::ParameterID { linear, 1 }, "Linear Phase", false));
     layout.add (std::make_unique<APF> (juce::ParameterID { drive, 1 }, "Drive", Range (0.0f, 100.0f, 0.1f), 0.0f, unit ("%")));
     layout.add (std::make_unique<APF> (juce::ParameterID { output, 1 }, "Output", Range (-18.0f, 18.0f, 0.1f), 0.0f, unit ("dB")));
 

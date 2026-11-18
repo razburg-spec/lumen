@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_dsp/juce_dsp.h>
 #include <juce_core/juce_core.h>
 #include <atomic>
 #include "Filters.h"
@@ -41,6 +42,7 @@ public:
         float freq = 1000.0f, gainDb = 0.0f, q = 1.0f;
         int type = 0;    // edge bands: 0 = cut, 1 = shelf
         int slope = 1;   // edge bands: 0..3 = 12 / 24 / 36 / 48 dB per octave
+        bool operator== (const BandParams&) const = default;
     };
 
     struct Params
@@ -48,7 +50,9 @@ public:
         int mode = 4;
         float outputDb = 0.0f;
         float drive = 0.0f;   // 0..1
+        bool linear = false;  // Linear Phase: the bands run as one FIR filter instead of the biquads
         std::array<BandParams, Band::numBands> bands {};
+        bool operator== (const Params&) const = default;
     };
 
     struct Meters
@@ -61,6 +65,13 @@ public:
 
     // The exact filters a band uses for these settings (the display draws its curve from this too).
     static PrismFilters::Design design (int band, const BandParams&, int mode, double sampleRate);
+
+    // Linear Phase. The impulse response is built off the audio thread from the same band designs,
+    // with the response's magnitude and no phase shift, centred in an FIR of linearLength() taps.
+    static int linearLength (double sampleRate);
+    static int linearLatency (double sampleRate) { return linearLength (sampleRate) / 2; }
+    static juce::AudioBuffer<float> buildLinearIr (const Params&, double sampleRate);
+    void loadLinearIr (juce::AudioBuffer<float>&& ir);   // any thread except the audio thread
 
     Meters meters;
     AnalyzerTap preTap, postTap;
@@ -107,4 +118,6 @@ private:
     juce::HeapBlock<float> mono;
     int monoSize = 0;
     bool first = true;
+    bool wasLinear = false;
+    juce::dsp::Convolution convolution { juce::dsp::Convolution::Latency { 0 } };
 };

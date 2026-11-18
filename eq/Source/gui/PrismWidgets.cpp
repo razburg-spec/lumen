@@ -277,7 +277,7 @@ void EqDisplay::setParam (const juce::String& id, float plain)
 void EqDisplay::poll()
 {
     const auto newParams = processor.currentParams();
-    bool changed = std::memcmp (&newParams, &params, sizeof (params)) != 0;
+    bool changed = ! (newParams == params);
     params = newParams;
 
     const auto mode = analyzerMode();
@@ -441,6 +441,22 @@ void EqDisplay::paint (juce::Graphics& g)
         g.drawText (label, circle, juce::Justification::centred, false);
     }
 
+    // Width handles of the selected (or hovered) bell.
+    for (int b : { selected, hovered })
+        if (hasHandles (b))
+            for (int side : { -1, 1 })
+            {
+                const auto hp = handlePosition (b, side);
+                const bool hot = (b == hovered && side == hoveredSide) || (b == dragging && side == dragSide);
+                const auto col = Theme::bandColour (b);
+                g.setColour (col.withAlpha (0.35f));
+                g.drawLine (juce::Line<float> (nodePosition (b), hp), 1.0f);
+                g.setColour (hot ? col : Theme::display);
+                g.fillEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (hp));
+                g.setColour (col);
+                g.drawEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (hp), 1.4f);
+            }
+
     const int bubble = dragging >= 0 ? dragging : hovered;
     if (bubble >= 0)
         drawNodeBubble (g, bubble);
@@ -500,16 +516,87 @@ void EqDisplay::drawNodeBubble (juce::Graphics& g, int band)
     g.drawText (line2, t, juce::Justification::centredLeft, false);
 }
 
+// ---- Bandwidth handles: two small dots on the curve at the band's -width edges (bells only) ----
+namespace
+{
+    // Bandwidth in octaves of a bell with quality factor q, and back.
+    float octavesForQ (float q)  { return 2.0f / std::log (2.0f) * std::asinh (1.0f / (2.0f * q)); }
+    float qForOctaves (float bw) { const float p = std::pow (2.0f, bw); return std::sqrt (p) / (p - 1.0f); }
+}
+
+bool EqDisplay::hasHandles (int band) const
+{
+    return band >= 0 && ! Band::isEdge (band) && params.bands[(size_t) band].on;
+}
+
+juce::Point<float> EqDisplay::handlePosition (int band, int side) const
+{
+    const auto& b = params.bands[(size_t) band];
+    const float half = 0.5f * octavesForQ (b.q);
+    const float hz = b.freq * std::pow (2.0f, side < 0 ? -half : half);
+    return { xForFreq (hz), yForGain (b.gainDb * 0.5f) };
+}
+
+EqDisplay::Hit EqDisplay::hitTest (juce::Point<float> p) const
+{
+    for (int b : { selected, hovered })
+        if (hasHandles (b))
+            for (int side : { -1, 1 })
+                if (handlePosition (b, side).getDistanceFrom (p) < 8.0f)
+                    return { b, side };
+    return { nodeAt (p), 0 };
+}
+
+void EqDisplay::beginGestures (int band)
+{
+    for (auto* name : { ParamID::freq, ParamID::gain, ParamID::q, ParamID::on })
+        if (auto* prm = processor.apvts.getParameter (Band::id (band, name)))
+            prm->beginChangeGesture();
+}
+
+void EqDisplay::endGestures (int band)
+{
+    for (auto* name : { ParamID::freq, ParamID::gain, ParamID::q, ParamID::on })
+        if (auto* prm = processor.apvts.getParameter (Band::id (band, name)))
+            prm->endChangeGesture();
+}
+
+void EqDisplay::setAsStep (const juce::String& id, float plain)
+{
+    if (auto* prm = processor.apvts.getParameter (id))
+    {
+        prm->beginChangeGesture();
+        prm->setValueNotifyingHost (prm->convertTo0to1 (plain));
+        prm->endChangeGesture();
+    }
+}
+
+void EqDisplay::resetBand (int band)
+{
+    processor.history.performAsOneStep ([&]
+    {
+        for (auto* name : { ParamID::freq, ParamID::gain, ParamID::q, ParamID::type, ParamID::slope })
+            if (auto* prm = processor.apvts.getParameter (Band::id (band, name)))
+            {
+                prm->beginChangeGesture();
+                prm->setValueNotifyingHost (prm->getDefaultValue());
+                prm->endChangeGesture();
+            }
+    });
+}
+
 void EqDisplay::mouseMove (const juce::MouseEvent& e)
 {
-    const int n = nodeAt (e.position);
-    if (n != hovered) { hovered = n; repaint(); }
-    setMouseCursor (n >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+    const auto hit = hitTest (e.position);
+    const int n = hit.band;
+    if (n != hovered || hit.side != hoveredSide) { hovered = n; hoveredSide = hit.side; repaint(); }
+    setMouseCursor (hit.side != 0 ? juce::MouseCursor::LeftRightResizeCursor
+                                  : (n >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor));
 }
 
 void EqDisplay::mouseExit (const juce::MouseEvent&)
 {
-    if (hovered >= 0) { hovered = -1; repaint(); }
+    if (hovered >= 0) { hovered = -1; hoveredSide = 0; repaint(); }
 }
 
 void EqDisplay::mouseDown (const juce::MouseEvent& e)
@@ -524,17 +611,28 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
             return;
         }
 
-    dragging = nodeAt (e.position);
-    if (dragging < 0)
+    const auto hit = hitTest (e.position);
+    if (hit.band < 0)
         return;
 
-    setSelectedBand (dragging);
-    if (onSelect) onSelect (dragging);
+    setSelectedBand (hit.band);
+    if (onSelect) onSelect (hit.band);
 
-    for (auto* name : { ParamID::freq, ParamID::gain, ParamID::on })
-        if (auto* p = processor.apvts.getParameter (Band::id (dragging, name)))
-            p->beginChangeGesture();
+    if (e.mods.isPopupMenu())
+    {
+        showBandMenu (hit.band);
+        return;
+    }
+    dragging = hit.band;
+    dragSide = hit.side;
+    dragMode = hit.side != 0 ? DragMode::width : (e.mods.isAltDown() ? DragMode::q : DragMode::move);
+    axisLock = 0;
+    const auto& b = params.bands[(size_t) dragging];
+    startFreq = b.freq;
+    startGain = b.gainDb;
+    startQ = b.q;
     dragTurnedOn = false;
+    beginGestures (dragging);
 }
 
 void EqDisplay::mouseDrag (const juce::MouseEvent& e)
@@ -542,35 +640,73 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
     if (dragging < 0)
         return;
 
-    if (! params.bands[(size_t) dragging].on && e.getDistanceFromDragStart() > 2 && ! dragTurnedOn)
+    const auto& b = params.bands[(size_t) dragging];
+    if (! b.on && e.getDistanceFromDragStart() > 2 && ! dragTurnedOn)
     {
         setParam (Band::id (dragging, ParamID::on), 1.0f);   // dragging a band that is off switches it on
         dragTurnedOn = true;
     }
 
-    const bool fine = e.mods.isCommandDown() || e.mods.isCtrlDown() || e.mods.isAltDown();
-    auto pos = e.position;
+    const bool fine = e.mods.isCommandDown() || e.mods.isCtrlDown();
+    auto delta = e.position - e.mouseDownPosition;
     if (fine)
-        pos = e.mouseDownPosition + (e.position - e.mouseDownPosition) * 0.2f;
-    if (e.mods.isShiftDown())   // shift locks to frequency only
-        pos.y = e.mouseDownPosition.y;
+        delta *= 0.15f;
 
-    setParam (Band::id (dragging, ParamID::freq), freqForX (pos.x));
-    const auto& b = params.bands[(size_t) dragging];
-    const bool cut = Band::isEdge (dragging) && b.type == (int) Band::EdgeType::cut;
-    if (! cut && ! e.mods.isShiftDown())
-        setParam (Band::id (dragging, ParamID::gain), juce::jlimit (-18.0f, 18.0f, gainForY (pos.y)));
+    if (dragMode == DragMode::q)
+    {
+        // Up = narrower, down = wider: one octave of Q per 60 pixels.
+        const float q = startQ * std::pow (2.0f, -delta.y / 60.0f);
+        setParam (Band::id (dragging, ParamID::q), juce::jlimit (0.1f, 18.0f, q));
+    }
+    else if (dragMode == DragMode::width)
+    {
+        // Drag a width handle away from the centre to widen, towards it to narrow.
+        const float x = e.mouseDownPosition.x + delta.x;
+        const float octaves = std::abs (std::log2 (freqForX (x) / startFreq)) * 2.0f;
+        setParam (Band::id (dragging, ParamID::q), juce::jlimit (0.1f, 18.0f, qForOctaves (juce::jmax (0.02f, octaves))));
+    }
+    else
+    {
+        // Shift locks the move to the first direction you drag in.
+        if (e.mods.isShiftDown())
+        {
+            if (axisLock == 0 && e.getDistanceFromDragStart() > 4)
+                axisLock = std::abs (delta.x) >= std::abs (delta.y) ? 1 : 2;
+        }
+        else
+        {
+            axisLock = 0;
+        }
+
+        const auto origin = juce::Point<float> (xForFreq (startFreq), yForGain (startGain));
+        if (axisLock != 2)
+            setParam (Band::id (dragging, ParamID::freq), freqForX (origin.x + delta.x));
+        else
+            setParam (Band::id (dragging, ParamID::freq), startFreq);
+
+        const bool cut = Band::isEdge (dragging) && b.type == (int) Band::EdgeType::cut;
+        if (! cut)
+            setParam (Band::id (dragging, ParamID::gain), axisLock == 1 ? startGain : juce::jlimit (-18.0f, 18.0f, gainForY (origin.y + delta.y)));
+    }
     params = processor.currentParams();
     repaint();
 }
 
-void EqDisplay::mouseUp (const juce::MouseEvent&)
+void EqDisplay::mouseUp (const juce::MouseEvent& e)
 {
     if (dragging < 0)
         return;
-    for (auto* name : { ParamID::freq, ParamID::gain, ParamID::on })
-        if (auto* p = processor.apvts.getParameter (Band::id (dragging, name)))
-            p->endChangeGesture();
+
+    // Option/Alt-click (no movement) resets the band.
+    if (dragMode == DragMode::q && e.getDistanceFromDragStart() < 2 && ! e.mouseWasDraggedSinceMouseDown())
+    {
+        endGestures (dragging);
+        resetBand (dragging);
+        dragging = -1;
+        repaint();
+        return;
+    }
+    endGestures (dragging);
     dragging = -1;
     repaint();
 }
@@ -578,14 +714,37 @@ void EqDisplay::mouseUp (const juce::MouseEvent&)
 void EqDisplay::mouseDoubleClick (const juce::MouseEvent& e)
 {
     const int n = nodeAt (e.position);
-    if (n < 0)
-        return;
-    if (auto* p = processor.apvts.getParameter (Band::id (n, ParamID::on)))
+    if (n >= 0)
     {
-        p->beginChangeGesture();
-        p->setValueNotifyingHost (params.bands[(size_t) n].on ? 0.0f : 1.0f);
-        p->endChangeGesture();
+        setAsStep (Band::id (n, ParamID::on), params.bands[(size_t) n].on ? 0.0f : 1.0f);
+        return;
     }
+    if (! plot().contains (e.position))
+        return;
+
+    // Double-click on empty space: bring the nearest band (preferring one that is off) to that spot.
+    const float hz = freqForX (e.position.x);
+    int best = -1;
+    float bestDist = 1.0e9f;
+    for (int pass = 0; pass < 2 && best < 0; ++pass)
+        for (int b = 0; b < Band::numBands; ++b)
+        {
+            const auto& band = params.bands[(size_t) b];
+            if (pass == 0 && band.on) continue;
+            if (Band::isEdge (b) && band.type == (int) Band::EdgeType::cut) continue;
+            const float d = std::abs (std::log2 (band.freq / hz));
+            if (d < bestDist) { bestDist = d; best = b; }
+        }
+    if (best < 0)
+        return;
+    processor.history.performAsOneStep ([&]
+    {
+        setAsStep (Band::id (best, ParamID::freq), hz);
+        setAsStep (Band::id (best, ParamID::gain), juce::jlimit (-18.0f, 18.0f, gainForY (e.position.y)));
+        setAsStep (Band::id (best, ParamID::on), 1.0f);
+    });
+    setSelectedBand (best);
+    if (onSelect) onSelect (best);
 }
 
 void EqDisplay::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
@@ -594,13 +753,49 @@ void EqDisplay::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWhee
     if (n < 0) n = selected;
     if (n < 0)
         return;
-    auto* p = processor.apvts.getParameter (Band::id (n, ParamID::q));
-    const float q = params.bands[(size_t) n].q * std::pow (1.25f, (wheel.deltaY + wheel.deltaX) * 4.0f);
-    p->beginChangeGesture();
-    p->setValueNotifyingHost (p->convertTo0to1 (juce::jlimit (0.1f, 18.0f, q)));
-    p->endChangeGesture();
+    const auto& b = params.bands[(size_t) n];
+    const float step = (wheel.deltaY + wheel.deltaX) * (wheel.isReversed ? -1.0f : 1.0f);
+    const bool fine = e.mods.isCommandDown() || e.mods.isCtrlDown();
+
+    if (e.mods.isAltDown())            // Option/Alt + scroll: gain
+        setAsStep (Band::id (n, ParamID::gain), juce::jlimit (-18.0f, 18.0f, b.gainDb + step * (fine ? 2.0f : 12.0f)));
+    else if (e.mods.isShiftDown())     // Shift + scroll: frequency
+        setAsStep (Band::id (n, ParamID::freq), juce::jlimit (20.0f, 20000.0f, b.freq * std::pow (2.0f, step * (fine ? 0.25f : 1.5f))));
+    else                               // scroll: Q
+        setAsStep (Band::id (n, ParamID::q), juce::jlimit (0.1f, 18.0f, b.q * std::pow (1.25f, step * (fine ? 1.0f : 4.0f))));
     params = processor.currentParams();
     repaint();
+}
+
+void EqDisplay::showBandMenu (int band)
+{
+    const auto& b = params.bands[(size_t) band];
+    juce::PopupMenu m;
+    m.addSectionHeader (Band::names()[band]);
+    m.addItem (1, "Band on", true, b.on);
+    if (Band::isEdge (band))
+    {
+        m.addSeparator();
+        m.addItem (10, band == Band::low ? "Low Cut" : "High Cut", true, b.type == 0);
+        m.addItem (11, band == Band::low ? "Low Shelf" : "High Shelf", true, b.type == 1);
+        juce::PopupMenu slopes;
+        for (int i = 0; i < 4; ++i)
+            slopes.addItem (20 + i, Band::slopeNames()[i] + "/oct", true, b.slope == i);
+        m.addSubMenu ("Cut slope", slopes, b.type == 0);
+    }
+    m.addSeparator();
+    m.addItem (2, "Reset band");
+
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                     [safe = juce::Component::SafePointer<EqDisplay> (this), band] (int r)
+                     {
+                         if (safe == nullptr || r == 0) return;
+                         auto& d = *safe;
+                         if (r == 1)       d.setAsStep (Band::id (band, ParamID::on), d.params.bands[(size_t) band].on ? 0.0f : 1.0f);
+                         else if (r == 2)  d.resetBand (band);
+                         else if (r >= 10 && r <= 11) d.setAsStep (Band::id (band, ParamID::type), (float) (r - 10));
+                         else if (r >= 20) d.setAsStep (Band::id (band, ParamID::slope), (float) (r - 20));
+                     });
 }
 
 //==============================================================================

@@ -147,7 +147,68 @@ int main()
         near (label, sineDb (p, 48000, 1000, 0.03f), 0, 0.3);
     }
 
-    // 7. Torture: random settings changed every block, including band switches. Must stay finite and bounded.
+    // 7. Linear Phase: same magnitude as the biquads, delayed by exactly half the filter length.
+    {
+        auto p = defaults();
+        p.linear = true;
+        p.bands[2].gainDb = 6.0f;
+        p.bands[2].freq = 1000.0f;
+        p.bands[0].on = true;            // low cut 24 dB @ 80 Hz
+        const double sr = 48000;
+        PrismEngine e;
+        const int block = 256;
+        e.prepare (sr, block, 2);
+        e.loadLinearIr (PrismEngine::buildLinearIr (p, sr));
+        juce::Thread::sleep (200);       // the convolution loads its filter in the background
+
+        auto run = [&] (double hz)
+        {
+            double inSq = 0, outSq = 0;
+            juce::AudioBuffer<float> buf (2, block);
+            for (int pos = 0; pos < (int) sr * 2; pos += block)
+            {
+                for (int i = 0; i < block; ++i)
+                {
+                    const float x = 0.25f * (float) std::sin (2.0 * PrismFilters::pi * hz * (pos + i) / sr);
+                    buf.setSample (0, i, x); buf.setSample (1, i, x);
+                }
+                e.process (buf, p);
+                if (pos > (int) sr)
+                    for (int i = 0; i < block; ++i)
+                    {
+                        const double x = 0.25 * std::sin (2.0 * PrismFilters::pi * hz * (pos + i) / sr);
+                        inSq += x * x;
+                        outSq += (double) buf.getSample (0, i) * buf.getSample (0, i);
+                    }
+            }
+            return 10.0 * std::log10 (outSq / inSq);
+        };
+        near ("linear phase: bell +6 @1 kHz, sine at 1 kHz", run (1000), 6, 0.1);
+        near ("linear phase: low cut 24 @80 Hz, sine at 40 Hz", run (40), designDb (0, P { true, 80, 0, 0.71f, 0, 1 }, sr, 40), 1.0);
+
+        // Impulse: the peak of a flat filter sits exactly at the reported latency, at unity.
+        auto flat = defaults();
+        flat.linear = true;
+        PrismEngine f;
+        f.prepare (sr, block, 1);
+        f.loadLinearIr (PrismEngine::buildLinearIr (flat, sr));
+        juce::Thread::sleep (200);
+        const int lat = PrismEngine::linearLatency (sr);
+        juce::AudioBuffer<float> imp (1, block);
+        int peakAt = -1; float peak = 0.0f;
+        for (int pos = 0; pos < lat + 2 * block; pos += block)
+        {
+            imp.clear();
+            if (pos == 0) imp.setSample (0, 0, 1.0f);
+            f.process (imp, flat);
+            for (int i = 0; i < block; ++i)
+                if (std::abs (imp.getSample (0, i)) > peak) { peak = std::abs (imp.getSample (0, i)); peakAt = pos + i; }
+        }
+        near ("linear phase: flat impulse peak position (samples)", peakAt, lat, 0);
+        near ("linear phase: flat impulse peak level", peak, 1.0, 0.01);
+    }
+
+    // 8. Torture: random settings changed every block, including band switches. Must stay finite and bounded.
     {
         PrismEngine e;
         const double sr = 44100;

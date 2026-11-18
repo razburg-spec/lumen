@@ -9,6 +9,7 @@ PrismProcessor::PrismProcessor()
     mode = apvts.getRawParameterValue (ParamID::mode);
     output = apvts.getRawParameterValue (ParamID::output);
     drive = apvts.getRawParameterValue (ParamID::drive);
+    linear = apvts.getRawParameterValue (ParamID::linear);
     for (int b = 0; b < Band::numBands; ++b)
     {
         auto& r = bandRaw[(size_t) b];
@@ -24,6 +25,52 @@ PrismProcessor::PrismProcessor()
     }
 }
 
+PrismProcessor::~PrismProcessor()
+{
+    cancelPendingUpdate();
+    irBuilder.stopThread (2000);
+}
+
+void PrismProcessor::IrBuilder::run()
+{
+    PrismEngine::Params last;
+    double lastRate = 0.0;
+    bool haveLast = false;
+    while (! threadShouldExit())
+    {
+        wait (25);
+        if (! owner.isLinearPhase())
+        {
+            haveLast = false;   // rebuild as soon as Linear Phase comes back on
+            continue;
+        }
+        const auto p = owner.currentParams();
+        const double rate = owner.getEngineSampleRate();
+        auto comparable = p;
+        comparable.outputDb = 0.0f;   // output and drive are not part of the filter
+        comparable.drive = 0.0f;
+        if (haveLast && ! dirty.load() && juce::exactlyEqual (rate, lastRate) && comparable == last)
+            continue;
+        dirty.store (false);
+        owner.engine.loadLinearIr (PrismEngine::buildLinearIr (p, rate));
+        last = comparable;
+        lastRate = rate;
+        haveLast = true;
+    }
+}
+
+void PrismProcessor::updateLatency()
+{
+    const bool lin = isLinearPhase();
+    reportedLinear.store (lin);
+    setLatencySamples (lin ? PrismEngine::linearLatency (getEngineSampleRate()) : 0);
+}
+
+void PrismProcessor::handleAsyncUpdate()
+{
+    updateLatency();
+}
+
 bool PrismProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto out = layouts.getMainOutputChannelSet();
@@ -36,7 +83,12 @@ void PrismProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.prepare (sampleRate, samplesPerBlock, getMainBusNumOutputChannels());
     sampleRateForDisplay.store (sampleRate);
-    setLatencySamples (0);
+    if (isLinearPhase())
+        engine.loadLinearIr (PrismEngine::buildLinearIr (currentParams(), sampleRate));
+    updateLatency();
+    irBuilder.invalidate();
+    if (! irBuilder.isThreadRunning())
+        irBuilder.startThread (juce::Thread::Priority::low);
 }
 
 PrismEngine::Params PrismProcessor::currentParams() const
@@ -45,6 +97,7 @@ PrismEngine::Params PrismProcessor::currentParams() const
     p.mode = juce::roundToInt (mode->load());
     p.outputDb = output->load();
     p.drive = drive->load() / 100.0f;
+    p.linear = linear->load() > 0.5f;
     for (int b = 0; b < Band::numBands; ++b)
     {
         const auto& r = bandRaw[(size_t) b];
@@ -68,7 +121,10 @@ void PrismProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, buffer.getNumSamples());
 
-    engine.process (buffer, currentParams());
+    const auto params = currentParams();
+    if (params.linear != reportedLinear.load())
+        triggerAsyncUpdate();
+    engine.process (buffer, params);
 }
 
 void PrismProcessor::getStateInformation (juce::MemoryBlock& destData)

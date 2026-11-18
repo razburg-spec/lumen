@@ -36,6 +36,8 @@ int main (int argc, char** argv)
     set (*proc, Band::id (5, ParamID::type), 1.0f);
     set (*proc, Band::id (5, ParamID::freq), 11000.0f); set (*proc, Band::id (5, ParamID::gain), 4.0f);
     set (*proc, ParamID::drive, 20.0f);
+    if (argc > 3 && juce::String (argv[3]) == "linear")
+        set (*proc, ParamID::linear, 1.0f);
 
     const double sr = 48000.0;
     proc->setPlayConfigDetails (2, 2, sr, 512);
@@ -71,6 +73,10 @@ int main (int argc, char** argv)
             pump (*editor);
     }
     pump (*editor);
+    if (auto* view = dynamic_cast<PrismView*> (editor->getChildComponent (0)))
+        for (auto* c : view->getChildren())
+            if (auto* d = dynamic_cast<EqDisplay*> (c))
+                d->setSelectedBand (3);
 
     for (float scale : { 1.0f, 2.0f })
     {

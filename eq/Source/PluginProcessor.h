@@ -4,10 +4,12 @@
 #include "dsp/PrismEngine.h"
 #include "ParamHistory.h"
 
-class PrismProcessor : public juce::AudioProcessor
+class PrismProcessor : public juce::AudioProcessor,
+                       private juce::AsyncUpdater
 {
 public:
     PrismProcessor();
+    ~PrismProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -22,6 +24,7 @@ public:
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
+    bool isLinearPhase() const { return linear->load() > 0.5f; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -44,12 +47,29 @@ public:
     double getEngineSampleRate() const { return sampleRateForDisplay.load(); }
 
 private:
+    void handleAsyncUpdate() override;   // reports the latency to the host when Linear Phase changes
+    void updateLatency();
+
+    // Builds the Linear Phase filter in the background whenever a setting changes.
+    class IrBuilder : public juce::Thread
+    {
+    public:
+        explicit IrBuilder (PrismProcessor& p) : juce::Thread ("Prism linear phase"), owner (p) {}
+        void run() override;
+        void invalidate() { dirty.store (true); notify(); }
+    private:
+        PrismProcessor& owner;
+        std::atomic<bool> dirty { true };
+    };
+
     PrismEngine engine;
+    IrBuilder irBuilder { *this };
+    std::atomic<bool> reportedLinear { false };
     std::atomic<double> sampleRateForDisplay { 48000.0 };
 
     struct BandRaw { std::atomic<float> *on, *freq, *gain, *q, *type = nullptr, *slope = nullptr; };
     std::array<BandRaw, Band::numBands> bandRaw {};
-    std::atomic<float> *mode = nullptr, *output = nullptr, *drive = nullptr;
+    std::atomic<float> *mode = nullptr, *output = nullptr, *drive = nullptr, *linear = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PrismProcessor)
 };

@@ -70,3 +70,4 @@ jobs:
         with:
           name: Lumen-Windows
           path: out/
+          retention-days: 7

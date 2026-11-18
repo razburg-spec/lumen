@@ -59,7 +59,10 @@ target_sources(Chroma PRIVATE
     Source/gui/Toolbar.cpp
     Source/presets/FactoryPresets.cpp
     Source/licensing/LemonSqueezyBackend.cpp
-    Source/licensing/LicenseManager.cpp)
+    Source/licensing/LicenseManager.cpp
+    ../shared/rba/UpdateChecker.cpp
+    ../shared/rba/UpdateBanner.cpp)
+target_include_directories(Chroma PRIVATE ../shared)
 
 # The built-in user guide (also published on the website).
 juce_add_binary_data(ChromaData SOURCES Resources/Manual.md)

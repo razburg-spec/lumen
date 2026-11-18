@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 
-project(Chroma VERSION 0.1.2 LANGUAGES C CXX)
+project(Chroma VERSION 0.1.3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -59,7 +59,10 @@ target_sources(Chroma PRIVATE
     Source/gui/Toolbar.cpp
     Source/presets/FactoryPresets.cpp
     Source/licensing/LemonSqueezyBackend.cpp
-    Source/licensing/LicenseManager.cpp)
+    Source/licensing/LicenseManager.cpp
+    ../shared/rba/UpdateChecker.cpp
+    ../shared/rba/UpdateBanner.cpp)
+target_include_directories(Chroma PRIVATE ../shared)
 
 # The built-in user guide (also published on the website).
 juce_add_binary_data(ChromaData SOURCES Resources/Manual.md)

@@ -1,4 +1,5 @@
 #pragma once
+#include "LinearConvolver.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <juce_dsp/juce_dsp.h>
 #include <juce_core/juce_core.h>
@@ -66,10 +67,22 @@ public:
     // The exact filters a band uses for these settings (the display draws its curve from this too).
     static PrismFilters::Design design (int band, const BandParams&, int mode, double sampleRate);
 
+    // Band listen: the part of the input one band works on (a band-pass around a bell, everything
+    // below the Low band's corner, everything above the High band's corner).
+    static PrismFilters::Design soloDesign (int band, const BandParams&, int mode, double sampleRate);
+
+    // Set from the editor, never automated. band -1 = off. levelDb trims the listening level.
+    struct Solo
+    {
+        std::atomic<int> band { -1 };
+        std::atomic<float> levelDb { 0.0f };
+    };
+    Solo solo;
+
     // Linear Phase. The impulse response is built off the audio thread from the same band designs,
     // with the response's magnitude and no phase shift, centred in an FIR of linearLength() taps.
     static int linearLength (double sampleRate);
-    static int linearLatency (double sampleRate) { return linearLength (sampleRate) / 2; }
+    static int linearLatency (double sampleRate) { return linearLength (sampleRate) / 2 + LinearConvolver::blockSize; }
     static juce::AudioBuffer<float> buildLinearIr (const Params&, double sampleRate);
     void loadLinearIr (juce::AudioBuffer<float>&& ir);   // any thread except the audio thread
 
@@ -101,6 +114,16 @@ private:
     bool bandIsIdentity (int b) const;
     void runBand (int b, juce::AudioBuffer<float>&, int start, int n);
     void runColour (juce::AudioBuffer<float>&, int mode);
+    void runSolo (juce::AudioBuffer<float>&, const Params&, int numCh, int numSamples);
+
+    // Band listen state
+    juce::AudioBuffer<float> dry;
+    std::array<std::array<PrismFilters::Biquad, 4>, maxChannels> soloState {};
+    PrismFilters::Design soloCoeffs;
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> soloFreq { 1000.0f };
+    juce::SmoothedValue<float> soloLevel { 1.0f };
+    float soloMix = 0.0f;
+    int soloRunning = -1;
 
     struct ColourState
     {
@@ -119,5 +142,5 @@ private:
     int monoSize = 0;
     bool first = true;
     bool wasLinear = false;
-    juce::dsp::Convolution convolution { juce::dsp::Convolution::Latency { 0 } };
+    LinearConvolver convolver;
 };

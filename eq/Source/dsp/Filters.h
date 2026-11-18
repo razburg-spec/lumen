@@ -155,6 +155,20 @@ namespace PrismFilters
         return matched (a1, a2, 1.0, mag2 (pi / w0), w0, q * q);
     }
 
+    // Constant 0 dB peak band-pass (used to listen to one band on its own).
+    inline Coeffs bandPass2 (double w0, double q)
+    {
+        w0 = std::min (w0, 0.98 * pi);
+        const double k = std::tan (0.5 * w0), k2 = k * k, norm = 1.0 / (1.0 + k / q + k2);
+        Coeffs c;
+        c.b0 = k / q * norm;
+        c.b1 = 0.0;
+        c.b2 = -c.b0;
+        c.a1 = 2.0 * (k2 - 1.0) * norm;
+        c.a2 = (1.0 - k / q + k2) * norm;
+        return c;
+    }
+
     // Butterworth cut of order 2 * sections. `resonance` scales the Q of the sharpest section
     // (1 = flat Butterworth, above 1 = a resonant bump at the corner).
     inline Design cut (bool highPass, double w0, int numSections, double resonance)

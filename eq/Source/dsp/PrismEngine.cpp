@@ -20,6 +20,14 @@ Design PrismEngine::design (int band, const BandParams& p, int mode, double samp
     {
         const float scale = band == Band::low ? voice.lowShelfQ : voice.highShelfQ;
         const double q = juce::jlimit (0.3, 4.0, (double) (p.q * scale));
+        if (band == Band::high && passiveHighs (mode))
+        {
+            if (p.gainDb > 0.0f)
+                d.sections[0] = bell (w0, p.gainDb, passiveHighBoostQ (p.q));                  // resonant peak, constant bandwidth
+            else
+                d.sections[0] = highShelf (w0, p.gainDb, juce::jlimit (0.3, 0.6, q * 0.7));   // wide, gentle attenuation
+            return d;
+        }
         d.sections[0] = band == Band::low ? lowShelf (w0, p.gainDb, q) : highShelf (w0, p.gainDb, q);
 
         // The classic passive trick: a boosting low shelf also scoops the low mids just above it.
@@ -32,8 +40,34 @@ Design PrismEngine::design (int band, const BandParams& p, int mode, double samp
     }
     else
     {
-        const double q = juce::jlimit (0.05, 30.0, (double) effectiveBellQ (voice, p.q, p.gainDb));
+        double q = juce::jlimit (0.05, 30.0, (double) effectiveBellQ (voice, p.q, p.gainDb));
+        if (passiveHighs (mode) && p.gainDb > 0.0f && p.freq >= 2500.0f)
+        {
+            // High boosts in Vintage: the passive peak's constant bandwidth, blended in over 2.5-4 kHz.
+            const double t = juce::jlimit (0.0, 1.0, (p.freq - 2500.0) / 1500.0);
+            const double passiveQ = passiveHighBoostQ (p.q / 1.0f * 0.7071f);
+            q = std::exp ((1.0 - t) * std::log (q) + t * std::log (passiveQ));
+        }
         d.sections[0] = bell (w0, p.gainDb, q);
+    }
+    return d;
+}
+
+Design PrismEngine::soloDesign (int band, const BandParams& p, int mode, double sampleRate)
+{
+    const double w0 = 2.0 * pi * juce::jlimit (10.0, 0.49 * sampleRate, (double) p.freq) / sampleRate;
+    Design d;
+    if (Band::isEdge (band))
+    {
+        // What a cut removes, or what a shelf lifts or lowers: everything beyond the corner.
+        d = cut (band == Band::high, w0, 2, 1.0);
+    }
+    else
+    {
+        const auto& voice = modeVoicing (mode);
+        const double q = juce::jlimit (0.3, 18.0, (double) effectiveBellQ (voice, p.q, p.gainDb));
+        d.count = 1;
+        d.sections[0] = bandPass2 (w0, q);
     }
     return d;
 }
@@ -87,8 +121,7 @@ juce::AudioBuffer<float> PrismEngine::buildLinearIr (const Params& params, doubl
 
 void PrismEngine::loadLinearIr (juce::AudioBuffer<float>&& ir)
 {
-    convolution.loadImpulseResponse (std::move (ir), sr, juce::dsp::Convolution::Stereo::no,
-                                     juce::dsp::Convolution::Trim::no, juce::dsp::Convolution::Normalise::no);
+    convolver.setImpulse (ir.getReadPointer (0), ir.getNumSamples());
 }
 
 void PrismEngine::prepare (double sampleRate, int maxBlock, int numChannels)
@@ -119,8 +152,16 @@ void PrismEngine::prepare (double sampleRate, int maxBlock, int numChannels)
     mono.allocate ((size_t) monoSize, true);
     first = true;
     wasLinear = false;
-    convolution.prepare ({ sampleRate, (juce::uint32) juce::jmax (1, maxBlock), (juce::uint32) juce::jlimit (1, maxChannels, numChannels) });
-    convolution.reset();
+    convolver.prepare (linearLength (sampleRate), juce::jlimit (1, maxChannels, numChannels));
+
+    dry.setSize (maxChannels, juce::jmax (1, maxBlock), false, true, true);
+    soloFreq.reset (sr, 0.03);
+    soloLevel.reset (sr, 0.03);
+    soloMix = 0.0f;
+    soloRunning = -1;
+    for (auto& ch : soloState)
+        for (auto& st : ch)
+            st.reset();
 }
 
 void PrismEngine::updateBand (int index, const BandParams& p, int mode)
@@ -327,13 +368,21 @@ void PrismEngine::process (juce::AudioBuffer<float>& buffer, const Params& param
     meters.inputPeak.store (juce::jmax (meters.inputPeak.load(), inPeak));
     feedTap (preTap);
 
+    const bool soloActive = solo.band.load() >= 0 || soloMix > 0.0f;
+    if (soloActive)
+    {
+        if (dry.getNumSamples() < numSamples)
+            dry.setSize (maxChannels, numSamples, false, false, true);   // only if the host broke its promise
+        for (int ch = 0; ch < numCh; ++ch)
+            dry.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+    }
+
     if (params.linear)
     {
         if (! wasLinear)
-            convolution.reset();
+            convolver.reset();
         wasLinear = true;
-        juce::dsp::AudioBlock<float> block (buffer.getArrayOfWritePointers(), (size_t) numCh, (size_t) numSamples);
-        convolution.process (juce::dsp::ProcessContextReplacing<float> (block));
+        convolver.process (buffer.getArrayOfWritePointers(), numCh, numSamples);
     }
     else if (wasLinear)
     {
@@ -383,9 +432,58 @@ void PrismEngine::process (juce::AudioBuffer<float>& buffer, const Params& param
             buffer.applyGain (ch, 0, numSamples, outGain.getCurrentValue());
     }
 
+    if (soloActive)
+        runSolo (buffer, params, numCh, numSamples);
+
     float outPeak = 0.0f;
     for (int ch = 0; ch < numCh; ++ch)
         outPeak = juce::jmax (outPeak, buffer.getMagnitude (ch, 0, numSamples));
     meters.outputPeak.store (juce::jmax (meters.outputPeak.load(), outPeak));
     feedTap (postTap);
+}
+
+void PrismEngine::runSolo (juce::AudioBuffer<float>& buffer, const Params& params, int numCh, int numSamples)
+{
+    const int wanted = juce::jlimit (-1, Band::numBands - 1, solo.band.load());
+    if (wanted >= 0 && wanted != soloRunning && soloMix <= 0.0f)
+    {
+        // Start listening (or switch band while silent): fresh filters at the band's settings.
+        soloRunning = wanted;
+        soloFreq.setCurrentAndTargetValue (params.bands[(size_t) wanted].freq);
+        for (auto& ch : soloState)
+            for (auto& st : ch)
+                st.reset();
+    }
+    const bool fadingIn = wanted >= 0 && wanted == soloRunning;
+    if (soloRunning < 0)
+        return;
+
+    const auto& bp = params.bands[(size_t) soloRunning];
+    soloFreq.setTargetValue (juce::jlimit (20.0f, 20000.0f, bp.freq));
+    soloLevel.setTargetValue (juce::Decibels::decibelsToGain (juce::jlimit (-24.0f, 12.0f, solo.levelDb.load())));
+
+    for (int start = 0; start < numSamples; start += chunk)
+    {
+        const int n = juce::jmin (chunk, numSamples - start);
+        auto settings = bp;
+        settings.freq = soloFreq.getCurrentValue();
+        soloCoeffs = soloDesign (soloRunning, settings, params.mode, sr);
+        soloFreq.skip (n);
+
+        for (int i = 0; i < n; ++i)
+        {
+            const float level = soloLevel.getNextValue();
+            soloMix = juce::jlimit (0.0f, 1.0f, soloMix + (fadingIn ? mixStep : -mixStep));
+            for (int ch = 0; ch < numCh; ++ch)
+            {
+                double x = dry.getReadPointer (ch)[start + i];
+                for (int s = 0; s < soloCoeffs.count; ++s)
+                    x = soloState[(size_t) ch][(size_t) s].process (soloCoeffs.sections[(size_t) s], x);
+                auto* out = buffer.getWritePointer (ch);
+                out[start + i] = out[start + i] * (1.0f - soloMix) + (float) x * level * soloMix;
+            }
+        }
+    }
+    if (soloMix <= 0.0f && ! fadingIn)
+        soloRunning = -1;
 }

@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 
-project(Prism VERSION 0.2.0 LANGUAGES C CXX)
+project(Prism VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -52,6 +52,7 @@ target_sources(Prism PRIVATE
     Source/PluginEditor.cpp
     Source/Parameters.cpp
     Source/dsp/PrismEngine.cpp
+    Source/dsp/LinearConvolver.cpp
     Source/gui/RbaLookAndFeel.cpp
     Source/gui/Widgets.cpp
     Source/gui/PrismWidgets.cpp

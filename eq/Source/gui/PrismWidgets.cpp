@@ -136,12 +136,12 @@ bool Spectrum::update (AnalyzerTap& tap, double sampleRate)
             break;
     }
 
-    if (newSamples < size / 4)
+    if (newSamples < size / 8)
     {
         // No fresh audio (transport stopped): let the curve fall away.
         bool changed = false;
         for (auto& c : curve)
-            if (c > -140.0f) { c -= 1.5f; changed = true; }
+            if (c > -140.0f) { c -= 0.8f; changed = true; }
         return changed;
     }
     newSamples = 0;
@@ -154,26 +154,49 @@ bool Spectrum::update (AnalyzerTap& tap, double sampleRate)
 
     const float norm = 4.0f / (float) size;   // a full-scale sine reads 0 dB
     const float binHz = (float) sampleRate / (float) size;
+    constexpr int numBins = size / 2 + 1;
+    for (int i = 0; i < numBins; ++i)
+        binDb[(size_t) i] = juce::Decibels::gainToDecibels (work[(size_t) i] * norm, -140.0f);
+
+    // Smooth mapping onto the log-spaced points: below a few bins per point, a cubic curve through
+    // the bins; above, a weighted average of power across 1/6 octave (no flat steps or corners).
+    auto binAt = [&] (int i) { return binDb[(size_t) juce::jlimit (0, numBins - 1, i)]; };
     for (int p = 0; p < points; ++p)
     {
         const float f = frequencyAt (p);
-        const float lo = f * 0.944f / binHz, hi = f * 1.059f / binHz;   // 1/6 octave around the point
-        float mag = 0.0f;
-        if (hi - lo < 1.0f)
+        const float pos = f / binHz;
+        const float span = pos * (1.059f - 0.944f);
+        float db;
+        if (span < 3.0f)
         {
-            const float pos = f / binHz;
-            const int i0 = juce::jlimit (0, size / 2 - 1, (int) pos);
-            const float frac = pos - (float) i0;
-            mag = work[(size_t) i0] * (1.0f - frac) + work[(size_t) juce::jmin (size / 2, i0 + 1)] * frac;
+            const int i1 = (int) pos;
+            const float t = pos - (float) i1;
+            const float y0 = binAt (i1 - 1), y1 = binAt (i1), y2 = binAt (i1 + 1), y3 = binAt (i1 + 2);
+            // Catmull-Rom
+            db = 0.5f * ((2.0f * y1) + (-y0 + y2) * t + (2.0f * y0 - 5.0f * y1 + 4.0f * y2 - y3) * t * t
+                         + (-y0 + 3.0f * y1 - 3.0f * y2 + y3) * t * t * t);
         }
         else
         {
-            for (int i = juce::jmax (0, (int) lo); i <= juce::jmin (size / 2, (int) hi); ++i)
-                mag = juce::jmax (mag, work[(size_t) i]);
+            const float half = 0.5f * span * 1.5f;
+            double sum = 0.0, wsum = 0.0;
+            for (int i = juce::jmax (1, (int) (pos - half)); i <= juce::jmin (numBins - 1, (int) (pos + half) + 1); ++i)
+            {
+                const float w = juce::jmax (0.0f, 1.0f - std::abs ((float) i - pos) / half);
+                const float m = work[(size_t) i] * norm;
+                sum += w * m * m;
+                wsum += w;
+            }
+            db = juce::Decibels::gainToDecibels ((float) std::sqrt (sum / juce::jmax (1.0e-9, wsum)), -140.0f);
         }
-        const float db = juce::Decibels::gainToDecibels (mag * norm, -140.0f);
+        raw[(size_t) p] = juce::jmax (-140.0f, db);
+    }
+
+    for (int p = 0; p < points; ++p)
+    {
+        const float db = 0.25f * raw[(size_t) juce::jmax (0, p - 1)] + 0.5f * raw[(size_t) p] + 0.25f * raw[(size_t) juce::jmin (points - 1, p + 1)];
         auto& c = curve[(size_t) p];
-        c = db > c ? c + 0.7f * (db - c) : juce::jmax (db, c - 1.2f);
+        c = db > c ? c + 0.45f * (db - c) : juce::jmax (db, c - 0.6f);
     }
     return true;
 }
@@ -183,8 +206,58 @@ namespace
 {
     constexpr float maxGainDb = 20.0f;      // the EQ scale shows +-20 dB (labels every 6 dB)
     constexpr float levelTop = 0.0f, levelBottom = -96.0f;
+    constexpr float fineFactor = 0.15f;
     const juce::StringArray analyzerLabels { "PRE + POST", "POST", "OFF" };
+
+    // A smooth path through the points (Catmull-Rom turned into cubic Beziers).
+    juce::Path smoothPath (const std::vector<juce::Point<float>>& pts)
+    {
+        juce::Path p;
+        if (pts.empty())
+            return p;
+        p.startNewSubPath (pts[0]);
+        for (size_t i = 0; i + 1 < pts.size(); ++i)
+        {
+            const auto p0 = pts[i == 0 ? 0 : i - 1], p1 = pts[i], p2 = pts[i + 1], p3 = pts[juce::jmin (pts.size() - 1, i + 2)];
+            p.cubicTo (p1 + (p2 - p0) / 6.0f, p2 - (p3 - p1) / 6.0f, p2);
+        }
+        return p;
+    }
+
+    // Bandwidth in octaves of a bell with quality factor q, and back.
+    float octavesForQ (float q)  { return 2.0f / std::log (2.0f) * std::asinh (1.0f / (2.0f * q)); }
+    float qForOctaves (float bw) { const float p = std::pow (2.0f, bw); return std::sqrt (p) / (p - 1.0f); }
+
+    juce::String formatHz (float hz)
+    {
+        return hz >= 1000.0f ? juce::String (hz / 1000.0f, hz >= 10000.0f ? 1 : 2) + " kHz" : juce::String (juce::roundToInt (hz)) + " Hz";
+    }
+
+    // "1.5k", "1500", "1.5 kHz", "250 Hz"
+    float parseHz (juce::String t)
+    {
+        t = t.trim().toLowerCase().removeCharacters (" ").replace ("hz", "");
+        const bool k = t.endsWithChar ('k');
+        const float v = t.getFloatValue();
+        return k ? v * 1000.0f : v;
+    }
 }
+
+// Inline text box for typing a value; Tab / Shift-Tab step through the fields.
+class EqDisplay::ValueEntry : public juce::TextEditor
+{
+public:
+    std::function<void (int)> onTab;
+    bool keyPressed (const juce::KeyPress& k) override
+    {
+        if (k.getKeyCode() == juce::KeyPress::tabKey)
+        {
+            if (onTab) onTab (k.getModifiers().isShiftDown() ? -1 : 1);
+            return true;
+        }
+        return juce::TextEditor::keyPressed (k);
+    }
+};
 
 EqDisplay::EqDisplay (PrismProcessor& p) : processor (p)
 {
@@ -192,6 +265,20 @@ EqDisplay::EqDisplay (PrismProcessor& p) : processor (p)
     post.clear();
     params = processor.currentParams();
     setRepaintsOnMouseActivity (false);
+    setWantsKeyboardFocus (false);
+}
+
+EqDisplay::~EqDisplay()
+{
+    processor.setSolo (-1);
+}
+
+void EqDisplay::previewHover (int band)
+{
+    params = processor.currentParams();
+    hovered = bubbleBand = band;
+    mousePos = listenButton (band).getCentre();
+    repaint();
 }
 
 juce::Rectangle<float> EqDisplay::plot() const
@@ -244,11 +331,15 @@ juce::Rectangle<float> EqDisplay::analyzerButton (int i) const
     return { x, r.getY() + 10.0f, i == 0 ? 82.0f : 52.0f, 20.0f };
 }
 
+bool EqDisplay::isCut (int band) const
+{
+    return Band::isEdge (band) && params.bands[(size_t) band].type == (int) Band::EdgeType::cut;
+}
+
 juce::Point<float> EqDisplay::nodePosition (int band) const
 {
     const auto& b = params.bands[(size_t) band];
-    const bool cut = Band::isEdge (band) && b.type == (int) Band::EdgeType::cut;
-    return { xForFreq (b.freq), yForGain (cut ? 0.0f : b.gainDb) };
+    return { xForFreq (b.freq), yForGain (isCut (band) ? 0.0f : b.gainDb) };
 }
 
 int EqDisplay::nodeAt (juce::Point<float> p) const
@@ -265,7 +356,35 @@ int EqDisplay::nodeAt (juce::Point<float> p) const
 
 void EqDisplay::setSelectedBand (int b)
 {
-    if (b != selected) { selected = b; repaint(); }
+    const auto newSelection = b >= 0 ? (isSelected (b) ? selection : (1u << b)) : 0u;
+    if (b != selected || newSelection != selection) { selected = b; selection = newSelection; repaint(); }
+}
+
+void EqDisplay::selectOnly (int b)
+{
+    selection = b >= 0 ? (1u << b) : 0u;
+    setPrimary (b);
+}
+
+void EqDisplay::setPrimary (int b)
+{
+    selected = b;
+    if (onSelect) onSelect (b);
+    repaint();
+}
+
+void EqDisplay::selectRange (int from, int to)
+{
+    // A consecutive range of bands, in frequency order.
+    if (from < 0) { selectOnly (to); return; }
+    const float lo = juce::jmin (params.bands[(size_t) from].freq, params.bands[(size_t) to].freq);
+    const float hi = juce::jmax (params.bands[(size_t) from].freq, params.bands[(size_t) to].freq);
+    selection = 0;
+    for (int b = 0; b < Band::numBands; ++b)
+        if (params.bands[(size_t) b].freq >= lo && params.bands[(size_t) b].freq <= hi)
+            selection |= 1u << b;
+    selection |= (1u << from) | (1u << to);
+    setPrimary (to);
 }
 
 void EqDisplay::setParam (const juce::String& id, float plain)
@@ -300,18 +419,23 @@ void EqDisplay::poll()
         repaint();
 }
 
-void EqDisplay::resized() {}
+void EqDisplay::resized()
+{
+    if (entry != nullptr)
+        closeEntry (false);
+}
 
 void EqDisplay::drawSpectrum (juce::Graphics& g, const Spectrum& s, juce::Colour fill, juce::Colour line)
 {
     const auto r = plot();
-    juce::Path p;
+    std::vector<juce::Point<float>> pts;
+    pts.reserve ((size_t) Spectrum::points);
     for (int i = 0; i < Spectrum::points; ++i)
     {
         const float f = Spectrum::frequencyAt (i);
-        const juce::Point<float> pt (xForFreq (f), yForLevel (s.levelAt (i), f));
-        if (i == 0) p.startNewSubPath (pt); else p.lineTo (pt);
+        pts.emplace_back (xForFreq (f), yForLevel (s.levelAt (i), f));
     }
+    const auto p = smoothPath (pts);
     juce::Path area (p);
     area.lineTo (r.getRight(), r.getBottom());
     area.lineTo (r.getX(), r.getBottom());
@@ -319,7 +443,34 @@ void EqDisplay::drawSpectrum (juce::Graphics& g, const Spectrum& s, juce::Colour
     g.setGradientFill (juce::ColourGradient (fill, 0.0f, r.getY() + r.getHeight() * 0.3f, fill.withAlpha (0.0f), 0.0f, r.getBottom(), false));
     g.fillPath (area);
     g.setColour (line);
-    g.strokePath (p, juce::PathStrokeType (1.1f));
+    g.strokePath (p, juce::PathStrokeType (0.9f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+void EqDisplay::drawSoloRegion (juce::Graphics& g, int band)
+{
+    // The part of the spectrum you hear while listening to this band.
+    const auto r = plot();
+    const double sr = processor.getEngineSampleRate();
+    const auto d = PrismEngine::soloDesign (band, params.bands[(size_t) band], params.mode, sr);
+    std::vector<juce::Point<float>> pts;
+    constexpr int n = 200;
+    for (int i = 0; i < n; ++i)
+    {
+        const float x = r.getX() + r.getWidth() * (float) i / (float) (n - 1);
+        const double w = juce::jmin (2.0 * PrismFilters::pi * freqForX (x) / sr, PrismFilters::pi * 0.999);
+        const float m = (float) juce::jlimit (0.0, 1.0, d.magnitude (w));
+        pts.emplace_back (x, r.getBottom() - m * r.getHeight());
+    }
+    auto edge = smoothPath (pts);
+    juce::Path area (edge);
+    area.lineTo (r.getRight(), r.getBottom());
+    area.lineTo (r.getX(), r.getBottom());
+    area.closeSubPath();
+    const auto col = Theme::bandColour (band);
+    g.setGradientFill (juce::ColourGradient (col.withAlpha (0.22f), 0.0f, r.getY(), col.withAlpha (0.04f), 0.0f, r.getBottom(), false));
+    g.fillPath (area);
+    g.setColour (col.withAlpha (0.55f));
+    g.strokePath (edge, juce::PathStrokeType (1.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
 void EqDisplay::paint (juce::Graphics& g)
@@ -361,18 +512,23 @@ void EqDisplay::paint (juce::Graphics& g)
                     juce::Justification::centredLeft, false);
     }
 
-    // Spectrum: the source before the EQ underneath, the result on top.
+    const bool soloing = listening >= 0;
     {
         juce::Graphics::ScopedSaveState clip (g);
         g.reduceClipRegion (r.toNearestInt());
+
+        // Spectrum: the source before the EQ underneath, the result on top.
         const auto am = analyzerMode();
         if (am == AnalyzerMode::prePost)
             drawSpectrum (g, pre, Theme::muted.withAlpha (0.20f), Theme::muted.withAlpha (0.45f));
         if (am != AnalyzerMode::off)
             drawSpectrum (g, post, accent.withAlpha (0.22f), accent.withAlpha (0.75f));
 
+        if (soloing)
+            drawSoloRegion (g, listening);
+
         // EQ curves: each band faintly in its color, the sum bold.
-        constexpr int numPoints = 360;
+        constexpr int numPoints = 400;
         std::array<PrismFilters::Design, Band::numBands> designs;
         std::array<bool, Band::numBands> active {};
         for (int b = 0; b < Band::numBands; ++b)
@@ -384,37 +540,35 @@ void EqDisplay::paint (juce::Graphics& g)
 
         std::array<float, numPoints> total {};
         const float zeroY = yForGain (0.0f);
+        std::vector<juce::Point<float>> pts ((size_t) numPoints);
         for (int b = 0; b < Band::numBands; ++b)
         {
             if (! active[(size_t) b]) continue;
-            juce::Path band;
-            band.startNewSubPath (r.getX(), zeroY);
             for (int i = 0; i < numPoints; ++i)
             {
                 const float x = r.getX() + r.getWidth() * (float) i / (float) (numPoints - 1);
                 const double w = 2.0 * PrismFilters::pi * freqForX (x) / sr;
                 const float db = w < PrismFilters::pi ? (float) juce::Decibels::gainToDecibels (designs[(size_t) b].magnitude (w), -60.0) : total[(size_t) juce::jmax (0, i - 1)];
                 total[(size_t) i] += db;
-                band.lineTo (x, yForGain (juce::jlimit (-40.0f, 40.0f, db)));
+                pts[(size_t) i] = { x, yForGain (juce::jlimit (-40.0f, 40.0f, db)) };
             }
+            auto band = smoothPath (pts);
             band.lineTo (r.getRight(), zeroY);
+            band.lineTo (r.getX(), zeroY);
             band.closeSubPath();
             const auto col = Theme::bandColour (b);
-            g.setColour (col.withAlpha (b == selected ? 0.20f : 0.09f));
+            const float alpha = soloing ? (b == listening ? 0.22f : 0.04f) : (isSelected (b) ? 0.20f : 0.09f);
+            g.setColour (col.withAlpha (alpha));
             g.fillPath (band);
         }
 
-        juce::Path curve;
         for (int i = 0; i < numPoints; ++i)
-        {
-            const float x = r.getX() + r.getWidth() * (float) i / (float) (numPoints - 1);
-            const float y = yForGain (juce::jlimit (-40.0f, 40.0f, total[(size_t) i]));
-            if (i == 0) curve.startNewSubPath (x, y); else curve.lineTo (x, y);
-        }
-        g.setColour (accent.withAlpha (0.18f));
-        g.strokePath (curve, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        g.setColour (Theme::text);
-        g.strokePath (curve, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            pts[(size_t) i] = { r.getX() + r.getWidth() * (float) i / (float) (numPoints - 1), yForGain (juce::jlimit (-40.0f, 40.0f, total[(size_t) i])) };
+        const auto curve = smoothPath (pts);
+        g.setColour (accent.withAlpha (soloing ? 0.05f : 0.13f));
+        g.strokePath (curve, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (Theme::text.withAlpha (soloing ? 0.35f : 0.95f));
+        g.strokePath (curve, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
     // Nodes
@@ -423,18 +577,26 @@ void EqDisplay::paint (juce::Graphics& g)
         const auto pos = nodePosition (b);
         const auto col = Theme::bandColour (b);
         const bool on = params.bands[(size_t) b].on;
-        const bool hot = b == selected || b == hovered || b == dragging;
+        const bool hot = isSelected (b) || b == hovered || b == dragging;
         const float rad = hot ? 10.0f : 8.5f;
         const auto circle = juce::Rectangle<float> (rad * 2.0f, rad * 2.0f).withCentre (pos);
+        juce::Graphics::ScopedSaveState fade (g);
+        if (soloing && b != listening)
+            g.setOpacity (0.35f);
         if (hot)
         {
             g.setColour (col.withAlpha (0.18f));
             g.fillEllipse (circle.expanded (6.0f));
         }
+        if (isSelected (b) && selection != (1u << b))
+        {
+            g.setColour (col.withAlpha (0.9f));
+            g.drawEllipse (circle.expanded (3.5f), 1.2f);   // part of a multi-selection
+        }
         g.setColour (on ? col : Theme::display);
         g.fillEllipse (circle);
         g.setColour (on ? col.brighter (0.3f) : col.withAlpha (0.6f));
-        g.drawEllipse (circle, 1.5f);
+        g.drawEllipse (circle, 1.2f);
         g.setColour (on ? Theme::display : col.withAlpha (0.8f));
         g.setFont (Theme::font (10.5f, true));
         const auto label = b == Band::low ? juce::String ("L") : (b == Band::high ? juce::String ("H") : juce::String (b));
@@ -442,23 +604,47 @@ void EqDisplay::paint (juce::Graphics& g)
     }
 
     // Width handles of the selected (or hovered) bell.
-    for (int b : { selected, hovered })
-        if (hasHandles (b))
-            for (int side : { -1, 1 })
-            {
-                const auto hp = handlePosition (b, side);
-                const bool hot = (b == hovered && side == hoveredSide) || (b == dragging && side == dragSide);
-                const auto col = Theme::bandColour (b);
-                g.setColour (col.withAlpha (0.35f));
-                g.drawLine (juce::Line<float> (nodePosition (b), hp), 1.0f);
-                g.setColour (hot ? col : Theme::display);
-                g.fillEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (hp));
-                g.setColour (col);
-                g.drawEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (hp), 1.4f);
-            }
+    if (! soloing)
+        for (int b : { selected, hovered })
+            if (hasHandles (b))
+                for (int side : { -1, 1 })
+                {
+                    const auto hp = handlePosition (b, side);
+                    const bool hot = (b == hovered && side == hoveredSide) || (b == dragging && side == dragSide);
+                    const auto col = Theme::bandColour (b);
+                    g.setColour (col.withAlpha (0.35f));
+                    g.drawLine (juce::Line<float> (nodePosition (b), hp), 1.0f);
+                    g.setColour (hot ? col : Theme::display);
+                    g.fillEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (hp));
+                    g.setColour (col);
+                    g.drawEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (hp), 1.4f);
+                }
 
-    const int bubble = dragging >= 0 ? dragging : hovered;
-    if (bubble >= 0)
+    // Click-to-add preview when nothing is selected.
+    if (showGhost && dragMode == DragMode::none && r.contains (mousePos))
+    {
+        const auto c = juce::Rectangle<float> (18.0f, 18.0f).withCentre (mousePos);
+        g.setColour (Theme::text.withAlpha (0.4f));
+        juce::Path ring;
+        ring.addEllipse (c);
+        const float dashes[] = { 3.0f, 3.0f };
+        juce::PathStrokeType (1.2f).createDashedStroke (ring, ring, dashes, 2);
+        g.fillPath (ring);
+        g.drawLine (mousePos.x - 4.0f, mousePos.y, mousePos.x + 4.0f, mousePos.y, 1.2f);
+        g.drawLine (mousePos.x, mousePos.y - 4.0f, mousePos.x, mousePos.y + 4.0f, 1.2f);
+    }
+
+    // Marquee selection
+    if (dragMode == DragMode::marquee && ! marquee.isEmpty())
+    {
+        g.setColour (Theme::text.withAlpha (0.06f));
+        g.fillRoundedRectangle (marquee, 4.0f);
+        g.setColour (Theme::text.withAlpha (0.4f));
+        g.drawRoundedRectangle (marquee, 4.0f, 1.0f);
+    }
+
+    const int bubble = listening >= 0 ? listening : (dragging >= 0 ? dragging : bubbleBand);
+    if (bubble >= 0 && entry == nullptr)
         drawNodeBubble (g, bubble);
 
     // Analyzer switch
@@ -483,47 +669,81 @@ void EqDisplay::paint (juce::Graphics& g)
     g.drawRoundedRectangle (bounds.reduced (0.5f), 12.0f, 1.0f);
 }
 
+juce::Rectangle<float> EqDisplay::bubbleBox (int band) const
+{
+    const auto pos = nodePosition (band);
+    auto box = juce::Rectangle<float> (164.0f, 52.0f).withCentre ({ pos.x, pos.y - 46.0f });
+    if (box.getY() < plot().getY() + 4.0f)
+        box.setY (pos.y + 20.0f);
+    return box.constrainedWithin (plot().reduced (4.0f));
+}
+
+juce::Rectangle<float> EqDisplay::listenButton (int band) const
+{
+    const auto box = bubbleBox (band);
+    return juce::Rectangle<float> (28.0f, 28.0f).withCentre ({ box.getRight() - 22.0f, box.getCentreY() });
+}
+
 void EqDisplay::drawNodeBubble (juce::Graphics& g, int band)
 {
     const auto& b = params.bands[(size_t) band];
     const bool edge = Band::isEdge (band);
-    const bool cut = edge && b.type == (int) Band::EdgeType::cut;
-    const auto hz = b.freq >= 1000.0f ? juce::String (b.freq / 1000.0f, b.freq >= 10000.0f ? 1 : 2) + " kHz" : juce::String (juce::roundToInt (b.freq)) + " Hz";
+    const bool cut = isCut (band);
+    const bool soloHere = listening == band;
 
-    juce::String line2 = cut ? juce::String (12 * (b.slope + 1)) + " dB/oct" : ((b.gainDb > 0 ? "+" : "") + juce::String (b.gainDb, 1) + " dB");
-    line2 << "   Q " << juce::String (b.q, 2);
+    juce::String line2;
+    if (soloHere)
+        line2 << "Listen " << (listenLevelDb > 0 ? "+" : "") << juce::String (listenLevelDb, 1) << " dB";
+    else
+        line2 << (cut ? juce::String (12 * (b.slope + 1)) + " dB/oct" : ((b.gainDb > 0 ? "+" : "") + juce::String (b.gainDb, 1) + " dB"))
+              << "   Q " << juce::String (b.q, 2);
     const auto title = Band::names()[band].toUpperCase() + (edge ? (cut ? "  CUT" : "  SHELF") : "") + (b.on ? "" : "  (OFF)");
 
-    const auto pos = nodePosition (band);
-    auto box = juce::Rectangle<float> (130.0f, 50.0f).withCentre ({ pos.x, pos.y - 44.0f });
-    if (box.getY() < plot().getY() + 4.0f)
-        box.setY (pos.y + 18.0f);
-    box = box.constrainedWithin (plot().reduced (4.0f));
+    const auto box = bubbleBox (band);
+    const auto col = Theme::bandColour (band);
+    g.setColour (Theme::raised.withAlpha (0.96f));
+    g.fillRoundedRectangle (box, 10.0f);
+    g.setColour (col.withAlpha (0.8f));
+    g.drawRoundedRectangle (box, 10.0f, 1.0f);
 
-    g.setColour (Theme::raised.withAlpha (0.95f));
-    g.fillRoundedRectangle (box, 8.0f);
-    g.setColour (Theme::bandColour (band).withAlpha (0.8f));
-    g.drawRoundedRectangle (box, 8.0f, 1.0f);
-    auto t = box.reduced (10.0f, 6.0f);
+    auto t = box.reduced (11.0f, 6.0f).withTrimmedRight (32.0f);
     g.setFont (Theme::caps (9.5f, 0.12f));
-    g.setColour (Theme::bandColour (band));
+    g.setColour (col);
     g.drawText (title, t.removeFromTop (13.0f), juce::Justification::centredLeft, false);
     g.setFont (Theme::font (12.0f, true));
     g.setColour (Theme::text);
-    g.drawText (hz, t.removeFromTop (14.0f), juce::Justification::centredLeft, false);
+    g.drawText (formatHz (b.freq), t.removeFromTop (15.0f), juce::Justification::centredLeft, false);
     g.setFont (Theme::font (11.0f));
-    g.setColour (Theme::muted);
+    g.setColour (soloHere ? col : Theme::muted);
     g.drawText (line2, t, juce::Justification::centredLeft, false);
+
+    // Listen button: a small speaker. Hold it to hear only this band.
+    const auto btn = listenButton (band);
+    const bool hot = soloHere || (hovered == band && btn.contains (mousePos));
+    g.setColour (soloHere ? col : (hot ? col.withAlpha (0.25f) : Theme::surface));
+    g.fillEllipse (btn);
+    g.setColour (soloHere ? col : col.withAlpha (hot ? 0.9f : 0.55f));
+    g.drawEllipse (btn.reduced (0.5f), 1.0f);
+
+    const auto ic = btn.reduced (7.5f);
+    juce::Path spk;
+    spk.addRoundedRectangle (ic.getX(), ic.getCentreY() - ic.getHeight() * 0.18f, ic.getWidth() * 0.22f, ic.getHeight() * 0.36f, 1.0f);
+    spk.startNewSubPath (ic.getX() + ic.getWidth() * 0.22f, ic.getCentreY() - ic.getHeight() * 0.18f);
+    spk.lineTo (ic.getX() + ic.getWidth() * 0.52f, ic.getY() + ic.getHeight() * 0.04f);
+    spk.lineTo (ic.getX() + ic.getWidth() * 0.52f, ic.getBottom() - ic.getHeight() * 0.04f);
+    spk.lineTo (ic.getX() + ic.getWidth() * 0.22f, ic.getCentreY() + ic.getHeight() * 0.18f);
+    spk.closeSubPath();
+    const auto iconCol = soloHere ? Theme::display : (hot ? Theme::text : Theme::muted);
+    g.setColour (iconCol);
+    g.fillPath (spk);
+    juce::Path waves;
+    const auto c = juce::Point<float> (ic.getX() + ic.getWidth() * 0.5f, ic.getCentreY());
+    for (float rad : { ic.getWidth() * 0.26f, ic.getWidth() * 0.46f })
+        waves.addCentredArc (c.x, c.y, rad, rad, 0.0f, juce::MathConstants<float>::pi * 0.22f, juce::MathConstants<float>::pi * 0.78f, true);
+    g.strokePath (waves, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-// ---- Bandwidth handles: two small dots on the curve at the band's -width edges (bells only) ----
-namespace
-{
-    // Bandwidth in octaves of a bell with quality factor q, and back.
-    float octavesForQ (float q)  { return 2.0f / std::log (2.0f) * std::asinh (1.0f / (2.0f * q)); }
-    float qForOctaves (float bw) { const float p = std::pow (2.0f, bw); return std::sqrt (p) / (p - 1.0f); }
-}
-
+// ---- Bandwidth handles: two small dots on the curve at the band's width edges (bells only) ----
 bool EqDisplay::hasHandles (int band) const
 {
     return band >= 0 && ! Band::isEdge (band) && params.bands[(size_t) band].on;
@@ -537,28 +757,37 @@ juce::Point<float> EqDisplay::handlePosition (int band, int side) const
     return { xForFreq (hz), yForGain (b.gainDb * 0.5f) };
 }
 
-EqDisplay::Hit EqDisplay::hitTest (juce::Point<float> p) const
+EqDisplay::PointHit EqDisplay::pointAt (juce::Point<float> p) const
 {
+    const int n = nodeAt (p);
+    if (n >= 0)
+        return { n, 0 };
     for (int b : { selected, hovered })
         if (hasHandles (b))
             for (int side : { -1, 1 })
                 if (handlePosition (b, side).getDistanceFrom (p) < 8.0f)
                     return { b, side };
-    return { nodeAt (p), 0 };
+    return {};
 }
 
-void EqDisplay::beginGestures (int band)
+void EqDisplay::beginGestures()
 {
-    for (auto* name : { ParamID::freq, ParamID::gain, ParamID::q, ParamID::on })
-        if (auto* prm = processor.apvts.getParameter (Band::id (band, name)))
-            prm->beginChangeGesture();
+    gestureBands = selection;
+    for (int b = 0; b < Band::numBands; ++b)
+        if (gestureBands >> b & 1u)
+            for (auto* name : { ParamID::freq, ParamID::gain, ParamID::q, ParamID::on })
+                if (auto* prm = processor.apvts.getParameter (Band::id (b, name)))
+                    prm->beginChangeGesture();
 }
 
-void EqDisplay::endGestures (int band)
+void EqDisplay::endGestures()
 {
-    for (auto* name : { ParamID::freq, ParamID::gain, ParamID::q, ParamID::on })
-        if (auto* prm = processor.apvts.getParameter (Band::id (band, name)))
-            prm->endChangeGesture();
+    for (int b = 0; b < Band::numBands; ++b)
+        if (gestureBands >> b & 1u)
+            for (auto* name : { ParamID::freq, ParamID::gain, ParamID::q, ParamID::on })
+                if (auto* prm = processor.apvts.getParameter (Band::id (b, name)))
+                    prm->endChangeGesture();
+    gestureBands = 0;
 }
 
 void EqDisplay::setAsStep (const juce::String& id, float plain)
@@ -585,22 +814,89 @@ void EqDisplay::resetBand (int band)
     });
 }
 
+void EqDisplay::createBandAt (juce::Point<float> pos)
+{
+    // Prism has six fixed bands: "adding" one brings the nearest band that is off (or else the
+    // nearest bell) to that spot, at that frequency and gain.
+    const float hz = freqForX (pos.x);
+    int best = -1;
+    float bestDist = 1.0e9f;
+    for (int pass = 0; pass < 2 && best < 0; ++pass)
+        for (int b = 0; b < Band::numBands; ++b)
+        {
+            const auto& band = params.bands[(size_t) b];
+            if (pass == 0 && band.on) continue;
+            if (isCut (b)) continue;
+            const float d = std::abs (std::log2 (band.freq / hz));
+            if (d < bestDist) { bestDist = d; best = b; }
+        }
+    if (best < 0)
+        return;
+    processor.history.performAsOneStep ([&]
+    {
+        setAsStep (Band::id (best, ParamID::freq), hz);
+        setAsStep (Band::id (best, ParamID::gain), juce::jlimit (-18.0f, 18.0f, gainForY (pos.y)));
+        setAsStep (Band::id (best, ParamID::on), 1.0f);
+    });
+    params = processor.currentParams();
+    createdBand = best;
+    createdAt = juce::Time::getMillisecondCounter();
+    selectOnly (best);
+}
+
+void EqDisplay::rebaseline (juce::Point<float> origin)
+{
+    // Called when a modifier changes mid-drag, so the point continues from where it is.
+    dragOrigin = origin;
+    startBands = params.bands;
+    axisLock = 0;
+}
+
 void EqDisplay::mouseMove (const juce::MouseEvent& e)
 {
-    const auto hit = hitTest (e.position);
-    const int n = hit.band;
-    if (n != hovered || hit.side != hoveredSide) { hovered = n; hoveredSide = hit.side; repaint(); }
+    mousePos = e.position;
+
+    // Keep the value bubble while the mouse is on it (so its listen button can be reached).
+    if (bubbleBand >= 0 && bubbleBox (bubbleBand).expanded (0.0f, 14.0f).contains (e.position) && nodeAt (e.position) < 0)
+    {
+        hovered = bubbleBand;
+        hoveredSide = 0;
+        showGhost = false;
+        setMouseCursor (listenButton (bubbleBand).contains (e.position) ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        repaint();
+        return;
+    }
+
+    const auto hit = pointAt (e.position);
+    const bool ghost = selection == 0 && hit.band < 0 && plot().contains (e.position);
+    if (hit.band != hovered || hit.side != hoveredSide || ghost || ghost != showGhost)
+    {
+        hovered = hit.band;
+        hoveredSide = hit.side;
+        bubbleBand = hit.band;
+        showGhost = ghost;
+        repaint();
+    }
     setMouseCursor (hit.side != 0 ? juce::MouseCursor::LeftRightResizeCursor
-                                  : (n >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor));
+                                  : (hit.band >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor));
 }
 
 void EqDisplay::mouseExit (const juce::MouseEvent&)
 {
-    if (hovered >= 0) { hovered = -1; hoveredSide = 0; repaint(); }
+    if (dragMode != DragMode::none)
+        return;
+    hovered = -1;
+    hoveredSide = 0;
+    bubbleBand = -1;
+    showGhost = false;
+    repaint();
 }
 
 void EqDisplay::mouseDown (const juce::MouseEvent& e)
 {
+    if (entry != nullptr)
+        closeEntry (true);
+
     for (int i = 0; i < 3; ++i)
         if (analyzerButton (i).contains (e.position))
         {
@@ -611,82 +907,233 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
             return;
         }
 
-    const auto hit = hitTest (e.position);
-    if (hit.band < 0)
-        return;
+    moved = false;
+    dragOrigin = e.position;
+    const auto& mods = e.mods;
+    const bool cmd = mods.isCommandDown() || (mods.isCtrlDown() && ! mods.isPopupMenu());
+    const bool alt = mods.isAltDown();
+    const bool shift = mods.isShiftDown();
 
-    setSelectedBand (hit.band);
-    if (onSelect) onSelect (hit.band);
-
-    if (e.mods.isPopupMenu())
+    // Listen button in the value bubble: hold to hear this band alone.
+    if (bubbleBand >= 0 && ! mods.isPopupMenu())
     {
-        showBandMenu (hit.band);
+        if (listenButton (bubbleBand).contains (e.position))
+        {
+            listening = bubbleBand;
+            listenStartLevel = listenLevelDb;
+            listenStartFreq = params.bands[(size_t) listening].freq;
+            dragMode = DragMode::listen;
+            if (auto* prm = processor.apvts.getParameter (Band::id (listening, ParamID::freq)))
+                prm->beginChangeGesture();
+            processor.setSolo (listening, listenLevelDb);
+            repaint();
+            return;
+        }
+        if (bubbleBox (bubbleBand).contains (e.position) && nodeAt (e.position) < 0)
+            return;   // clicks on the bubble itself do nothing
+    }
+
+    const auto hit = pointAt (e.position);
+    if (hit.band >= 0)
+    {
+        const int b = hit.band;
+        if (mods.isPopupMenu())
+        {
+            if (! isSelected (b)) selectOnly (b); else setPrimary (b);
+            showBandMenu (b);
+            return;
+        }
+        if (alt && cmd)
+        {
+            // Change the band's shape (the Low and High bands: Cut or Shelf).
+            selectOnly (b);
+            if (Band::isEdge (b))
+                setAsStep (Band::id (b, ParamID::type), isCut (b) ? 1.0f : 0.0f);
+            return;
+        }
+        if (alt && shift)
+        {
+            // Change the slope (cuts: 12 > 24 > 36 > 48 dB/oct).
+            selectOnly (b);
+            if (isCut (b))
+                setAsStep (Band::id (b, ParamID::slope), (float) ((params.bands[(size_t) b].slope + 1) % 4));
+            return;
+        }
+        if (alt && hit.side == 0)
+        {
+            // Bypass the band.
+            setAsStep (Band::id (b, ParamID::on), params.bands[(size_t) b].on ? 0.0f : 1.0f);
+            if (! isSelected (b)) selectOnly (b); else setPrimary (b);
+            return;
+        }
+
+        wasSelected = isSelected (b);
+        if (cmd)
+        {
+            selection |= 1u << b;          // Cmd/Ctrl-click adds a band to the selection
+            setPrimary (b);
+        }
+        else if (shift && ! wasSelected)
+        {
+            selectRange (selected, b);     // Shift-click selects a range
+        }
+        else if (! wasSelected || hit.side != 0)
+        {
+            selectOnly (b);
+        }
+        else
+        {
+            setPrimary (b);
+        }
+
+        if (hit.side != 0)
+            selection = 1u << b;           // width handles act on their own band only
+
+        dragging = b;
+        dragSide = hit.side;
+        dragMode = hit.side != 0 ? DragMode::width : DragMode::move;
+        dragQ = cmd;
+        dragFine = shift;
+        axisLock = 0;
+        startBands = params.bands;
+        dragTurnedOn = false;
+        beginGestures();
         return;
     }
-    dragging = hit.band;
-    dragSide = hit.side;
-    dragMode = hit.side != 0 ? DragMode::width : (e.mods.isAltDown() ? DragMode::q : DragMode::move);
-    axisLock = 0;
-    const auto& b = params.bands[(size_t) dragging];
-    startFreq = b.freq;
-    startGain = b.gainDb;
-    startQ = b.q;
-    dragTurnedOn = false;
-    beginGestures (dragging);
+
+    if (! plot().contains (e.position))
+        return;
+
+    if (mods.isPopupMenu())
+    {
+        showBackgroundMenu();
+        return;
+    }
+    if (cmd && selection != 0)
+    {
+        createBandAt (e.position);         // Cmd/Ctrl-click on the background adds a band
+        return;
+    }
+    hadSelection = selection != 0;
+    dragMode = DragMode::marquee;
+    marqueeStart = e.position;
+    marquee = {};
+    showGhost = false;
 }
 
 void EqDisplay::mouseDrag (const juce::MouseEvent& e)
 {
-    if (dragging < 0)
+    mousePos = e.position;
+    if (e.getDistanceFromDragStart() > 2)
+        moved = true;
+
+    if (dragMode == DragMode::listen)
+    {
+        // Sideways: the band's frequency. Up and down: the listening level.
+        const auto delta = e.position - e.mouseDownPosition;
+        if (std::abs (delta.x) > 3.0f)
+            setParam (Band::id (listening, ParamID::freq), freqForX (xForFreq (listenStartFreq) + delta.x));
+        listenLevelDb = juce::jlimit (-24.0f, 12.0f, std::round ((listenStartLevel - delta.y / 6.0f) * 2.0f) * 0.5f);
+        processor.setSolo (listening, listenLevelDb);
+        params = processor.currentParams();
+        repaint();
+        return;
+    }
+
+    if (dragMode == DragMode::marquee)
+    {
+        if (! moved)
+            return;
+        marquee = juce::Rectangle<float> (marqueeStart, e.position).getIntersection (plot());
+        juce::uint32 sel = 0;
+        int first = -1;
+        for (int b = 0; b < Band::numBands; ++b)
+            if (marquee.contains (nodePosition (b)))
+            {
+                sel |= 1u << b;
+                if (first < 0) first = b;
+            }
+        if (sel != selection)
+        {
+            selection = sel;
+            selected = first;
+            if (onSelect) onSelect (first);
+        }
+        repaint();
+        return;
+    }
+
+    if (dragging < 0 || ! moved)
         return;
 
-    const auto& b = params.bands[(size_t) dragging];
-    if (! b.on && e.getDistanceFromDragStart() > 2 && ! dragTurnedOn)
+    // Switching Cmd/Ctrl (Q) or Shift (fine) mid-drag continues smoothly from where the point is.
+    const bool cmd = e.mods.isCommandDown() || e.mods.isCtrlDown();
+    const bool fine = e.mods.isShiftDown();
+    if (cmd != dragQ || fine != dragFine)
     {
-        setParam (Band::id (dragging, ParamID::on), 1.0f);   // dragging a band that is off switches it on
+        dragQ = cmd;
+        dragFine = fine;
+        rebaseline (e.position);
+    }
+
+    // Dragging a band that is off switches it on.
+    if (! dragTurnedOn)
+    {
+        for (int b = 0; b < Band::numBands; ++b)
+            if (isSelected (b) && ! params.bands[(size_t) b].on && (b == dragging || dragMode != DragMode::width))
+                setParam (Band::id (b, ParamID::on), 1.0f);
         dragTurnedOn = true;
     }
 
-    const bool fine = e.mods.isCommandDown() || e.mods.isCtrlDown();
-    auto delta = e.position - e.mouseDownPosition;
+    auto delta = e.position - dragOrigin;
     if (fine)
-        delta *= 0.15f;
+        delta *= fineFactor;
 
-    if (dragMode == DragMode::q)
+    // Option/Alt keeps the move on one axis: whichever way you go first.
+    if (e.mods.isAltDown())
     {
-        // Up = narrower, down = wider: one octave of Q per 60 pixels.
-        const float q = startQ * std::pow (2.0f, -delta.y / 60.0f);
-        setParam (Band::id (dragging, ParamID::q), juce::jlimit (0.1f, 18.0f, q));
+        if (axisLock == 0 && delta.getDistanceFromOrigin() > 4.0f * (fine ? fineFactor : 1.0f))
+            axisLock = std::abs (delta.x) >= std::abs (delta.y) ? 1 : 2;
+        if (axisLock == 1) delta.y = 0.0f;
+        if (axisLock == 2) delta.x = 0.0f;
     }
-    else if (dragMode == DragMode::width)
+    else
+    {
+        axisLock = 0;
+    }
+
+    if (dragMode == DragMode::width)
     {
         // Drag a width handle away from the centre to widen, towards it to narrow.
-        const float x = e.mouseDownPosition.x + delta.x;
-        const float octaves = std::abs (std::log2 (freqForX (x) / startFreq)) * 2.0f;
+        const auto& s = startBands[(size_t) dragging];
+        const float x = xForFreq (s.freq * std::pow (2.0f, dragSide * 0.5f * octavesForQ (s.q))) + delta.x;
+        const float octaves = std::abs (std::log2 (freqForX (x) / s.freq)) * 2.0f;
         setParam (Band::id (dragging, ParamID::q), juce::jlimit (0.1f, 18.0f, qForOctaves (juce::jmax (0.02f, octaves))));
     }
     else
     {
-        // Shift locks the move to the first direction you drag in.
-        if (e.mods.isShiftDown())
-        {
-            if (axisLock == 0 && e.getDistanceFromDragStart() > 4)
-                axisLock = std::abs (delta.x) >= std::abs (delta.y) ? 1 : 2;
-        }
-        else
-        {
-            axisLock = 0;
-        }
+        const auto& lead = startBands[(size_t) dragging];
+        const float ratio = freqForX (xForFreq (lead.freq) + delta.x) / juce::jlimit (20.0f, 20000.0f, lead.freq);
+        const float y0 = yForGain (isCut (dragging) ? 0.0f : lead.gainDb);
+        const float gainDelta = gainForY (y0 + delta.y) - gainForY (y0);
+        const float qFactor = std::pow (2.0f, -delta.y / 60.0f);   // up = narrower / more resonant
 
-        const auto origin = juce::Point<float> (xForFreq (startFreq), yForGain (startGain));
-        if (axisLock != 2)
-            setParam (Band::id (dragging, ParamID::freq), freqForX (origin.x + delta.x));
-        else
-            setParam (Band::id (dragging, ParamID::freq), startFreq);
-
-        const bool cut = Band::isEdge (dragging) && b.type == (int) Band::EdgeType::cut;
-        if (! cut)
-            setParam (Band::id (dragging, ParamID::gain), axisLock == 1 ? startGain : juce::jlimit (-18.0f, 18.0f, gainForY (origin.y + delta.y)));
+        for (int b = 0; b < Band::numBands; ++b)
+        {
+            if (! isSelected (b)) continue;
+            const auto& s = startBands[(size_t) b];
+            if (dragQ)
+            {
+                // Cmd/Ctrl + vertical drag: Q of every selected band.
+                setParam (Band::id (b, ParamID::q), juce::jlimit (0.1f, 18.0f, s.q * qFactor));
+                continue;
+            }
+            setParam (Band::id (b, ParamID::freq), juce::jlimit (20.0f, 20000.0f, s.freq * ratio));
+            if (isCut (b))
+                setParam (Band::id (b, ParamID::q), juce::jlimit (0.1f, 18.0f, s.q * qFactor));   // a cut has no gain: up/down = resonance
+            else
+                setParam (Band::id (b, ParamID::gain), juce::jlimit (-18.0f, 18.0f, s.gainDb + gainDelta));
+        }
     }
     params = processor.currentParams();
     repaint();
@@ -694,76 +1141,200 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
 
 void EqDisplay::mouseUp (const juce::MouseEvent& e)
 {
-    if (dragging < 0)
-        return;
-
-    // Option/Alt-click (no movement) resets the band.
-    if (dragMode == DragMode::q && e.getDistanceFromDragStart() < 2 && ! e.mouseWasDraggedSinceMouseDown())
+    if (dragMode == DragMode::listen)
     {
-        endGestures (dragging);
-        resetBand (dragging);
-        dragging = -1;
+        processor.setSolo (-1);
+        if (auto* prm = processor.apvts.getParameter (Band::id (listening, ParamID::freq)))
+            prm->endChangeGesture();
+        listening = -1;
+        dragMode = DragMode::none;
         repaint();
         return;
     }
-    endGestures (dragging);
-    dragging = -1;
+
+    if (dragMode == DragMode::marquee)
+    {
+        dragMode = DragMode::none;
+        marquee = {};
+        if (! moved)
+        {
+            if (hadSelection)
+                selectOnly (-1);           // click on the background: deselect
+            else
+                createBandAt (e.position); // nothing selected: a click adds a band
+        }
+        repaint();
+        return;
+    }
+
+    if (dragging >= 0)
+    {
+        endGestures();
+        if (! moved && dragMode == DragMode::move)
+        {
+            const bool cmd = e.mods.isCommandDown() || e.mods.isCtrlDown();
+            if (cmd && wasSelected && selection != (1u << dragging))
+            {
+                selection &= ~(1u << dragging);   // Cmd/Ctrl-click on a selected band removes it
+                int next = -1;
+                for (int b = 0; b < Band::numBands && next < 0; ++b)
+                    if (isSelected (b)) next = b;
+                setPrimary (next);
+            }
+            else if (! cmd && ! e.mods.isShiftDown() && wasSelected)
+            {
+                selectOnly (dragging);            // plain click inside a multi-selection
+            }
+        }
+        dragging = -1;
+    }
+    dragMode = DragMode::none;
     repaint();
 }
 
 void EqDisplay::mouseDoubleClick (const juce::MouseEvent& e)
 {
-    const int n = nodeAt (e.position);
+    int n = nodeAt (e.position);
+    if (n < 0 && bubbleBand >= 0 && bubbleBox (bubbleBand).contains (e.position) && ! listenButton (bubbleBand).contains (e.position))
+        n = bubbleBand;
     if (n >= 0)
     {
-        setAsStep (Band::id (n, ParamID::on), params.bands[(size_t) n].on ? 0.0f : 1.0f);
+        // The second click of a click that just added this band: not a request to type.
+        if (n == createdBand && juce::Time::getMillisecondCounter() - createdAt < 600)
+            return;
+        openEntry (n, 0);   // type values: Frequency, then Tab to Gain and Q
         return;
     }
-    if (! plot().contains (e.position))
-        return;
-
-    // Double-click on empty space: bring the nearest band (preferring one that is off) to that spot.
-    const float hz = freqForX (e.position.x);
-    int best = -1;
-    float bestDist = 1.0e9f;
-    for (int pass = 0; pass < 2 && best < 0; ++pass)
-        for (int b = 0; b < Band::numBands; ++b)
-        {
-            const auto& band = params.bands[(size_t) b];
-            if (pass == 0 && band.on) continue;
-            if (Band::isEdge (b) && band.type == (int) Band::EdgeType::cut) continue;
-            const float d = std::abs (std::log2 (band.freq / hz));
-            if (d < bestDist) { bestDist = d; best = b; }
-        }
-    if (best < 0)
-        return;
-    processor.history.performAsOneStep ([&]
-    {
-        setAsStep (Band::id (best, ParamID::freq), hz);
-        setAsStep (Band::id (best, ParamID::gain), juce::jlimit (-18.0f, 18.0f, gainForY (e.position.y)));
-        setAsStep (Band::id (best, ParamID::on), 1.0f);
-    });
-    setSelectedBand (best);
-    if (onSelect) onSelect (best);
+    if (plot().contains (e.position) && ! analyzerButton (0).getUnion (analyzerButton (2)).contains (e.position)
+        && juce::Time::getMillisecondCounter() - createdAt > 600)
+        createBandAt (e.position);
 }
 
 void EqDisplay::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
     int n = nodeAt (e.position);
-    if (n < 0) n = selected;
+    if (n < 0 && bubbleBand >= 0 && bubbleBox (bubbleBand).contains (e.position))
+        n = bubbleBand;
     if (n < 0)
         return;
-    const auto& b = params.bands[(size_t) n];
-    const float step = (wheel.deltaY + wheel.deltaX) * (wheel.isReversed ? -1.0f : 1.0f);
-    const bool fine = e.mods.isCommandDown() || e.mods.isCtrlDown();
 
-    if (e.mods.isAltDown())            // Option/Alt + scroll: gain
-        setAsStep (Band::id (n, ParamID::gain), juce::jlimit (-18.0f, 18.0f, b.gainDb + step * (fine ? 2.0f : 12.0f)));
-    else if (e.mods.isShiftDown())     // Shift + scroll: frequency
-        setAsStep (Band::id (n, ParamID::freq), juce::jlimit (20.0f, 20000.0f, b.freq * std::pow (2.0f, step * (fine ? 0.25f : 1.5f))));
-    else                               // scroll: Q
-        setAsStep (Band::id (n, ParamID::q), juce::jlimit (0.1f, 18.0f, b.q * std::pow (1.25f, step * (fine ? 1.0f : 4.0f))));
+    const float step = (wheel.deltaY + wheel.deltaX) * (wheel.isReversed ? -1.0f : 1.0f);
+    const bool fine = e.mods.isShiftDown();
+    const bool cmd = e.mods.isCommandDown() || e.mods.isCtrlDown();
+    if (e.mods.isAltDown())
+        return;   // reserved
+
+    // Acts on the band under the mouse, or on the whole selection if that band is part of it.
+    const juce::uint32 targets = isSelected (n) ? selection : (1u << n);
+
+    if (! cmd && isCut (n))
+    {
+        // Scroll over a cut: slope, in steps.
+        wheelSlope += step * (fine ? 2.0f : 6.0f);
+        if (std::abs (wheelSlope) >= 1.0f)
+        {
+            const int dir = wheelSlope > 0.0f ? 1 : -1;
+            wheelSlope = 0.0f;
+            setAsStep (Band::id (n, ParamID::slope), (float) juce::jlimit (0, 3, params.bands[(size_t) n].slope + dir));
+        }
+    }
+    else
+    {
+        processor.history.performAsOneStep ([&]
+        {
+            for (int b = 0; b < Band::numBands; ++b)
+            {
+                if ((targets >> b & 1u) == 0) continue;
+                const auto& bp = params.bands[(size_t) b];
+                if (cmd)        // Cmd/Ctrl + scroll: gain
+                {
+                    if (! isCut (b))
+                        setAsStep (Band::id (b, ParamID::gain), juce::jlimit (-18.0f, 18.0f, bp.gainDb + step * (fine ? 2.0f : 12.0f)));
+                }
+                else if (! isCut (b))   // scroll: Q
+                {
+                    setAsStep (Band::id (b, ParamID::q), juce::jlimit (0.1f, 18.0f, bp.q * std::pow (1.25f, step * (fine ? 1.0f : 4.0f))));
+                }
+            }
+        });
+    }
     params = processor.currentParams();
+    repaint();
+}
+
+void EqDisplay::openEntry (int band, int field)
+{
+    closeEntry (true);
+    const auto fields = isCut (band) ? std::vector<int> { 0, 2 } : std::vector<int> { 0, 1, 2 };
+    if (std::find (fields.begin(), fields.end(), field) == fields.end())
+        field = 0;
+    entryBand = band;
+    entryField = field;
+    selectOnly (band);
+
+    const auto& b = params.bands[(size_t) band];
+    juce::String text = field == 0 ? formatHz (b.freq) : (field == 1 ? juce::String (b.gainDb, 1) : juce::String (b.q, 2));
+
+    entry = std::make_unique<ValueEntry>();
+    auto& ed = *entry;
+    const auto col = Theme::bandColour (band);
+    ed.setFont (Theme::font (13.0f, true));
+    ed.setJustification (juce::Justification::centred);
+    ed.setColour (juce::TextEditor::backgroundColourId, Theme::raised);
+    ed.setColour (juce::TextEditor::textColourId, Theme::text);
+    ed.setColour (juce::TextEditor::outlineColourId, col);
+    ed.setColour (juce::TextEditor::focusedOutlineColourId, col);
+    ed.setColour (juce::TextEditor::highlightColourId, col.withAlpha (0.35f));
+    ed.setTextToShowWhenEmpty (field == 0 ? "Frequency" : (field == 1 ? "Gain dB" : "Q"), Theme::faint);
+    ed.setText (text, false);
+    ed.selectAll();
+
+    const auto box = bubbleBox (band);
+    addAndMakeVisible (ed);
+    ed.setBounds (box.withSizeKeepingCentre (130.0f, 26.0f).toNearestInt());
+
+    ed.onReturnKey = [this] { closeEntry (true); };
+    ed.onEscapeKey = [this] { closeEntry (false); };
+    ed.onFocusLost = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<EqDisplay> (this)] { if (safe != nullptr) safe->closeEntry (true); }); };
+    ed.onTab = [this, fields] (int dir)
+    {
+        const int b = entryBand;
+        auto it = std::find (fields.begin(), fields.end(), entryField);
+        int idx = (int) std::distance (fields.begin(), it) + dir;
+        idx = (idx + (int) fields.size()) % (int) fields.size();
+        const int next = fields[(size_t) idx];
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<EqDisplay> (this), b, next]
+        {
+            if (safe != nullptr) safe->openEntry (b, next);
+        });
+        closeEntry (true);
+    };
+    ed.grabKeyboardFocus();
+    repaint();
+}
+
+void EqDisplay::closeEntry (bool commit)
+{
+    if (entry == nullptr)
+        return;
+    auto ed = std::move (entry);   // entry is null from here on, so re-entrant calls do nothing
+    if (commit && entryBand >= 0)
+    {
+        const auto t = ed->getText();
+        if (t.trim().isNotEmpty())
+        {
+            if (entryField == 0)
+                setAsStep (Band::id (entryBand, ParamID::freq), juce::jlimit (20.0f, 20000.0f, parseHz (t)));
+            else if (entryField == 1)
+                setAsStep (Band::id (entryBand, ParamID::gain), juce::jlimit (-18.0f, 18.0f, t.getFloatValue()));
+            else
+                setAsStep (Band::id (entryBand, ParamID::q), juce::jlimit (0.1f, 18.0f, t.getFloatValue()));
+        }
+    }
+    ed->onFocusLost = nullptr;
+    removeChildComponent (ed.get());
+    params = processor.currentParams();
+    juce::MessageManager::callAsync ([e = std::shared_ptr<ValueEntry> (std::move (ed))] {});   // delete after the current callback
     repaint();
 }
 
@@ -784,6 +1355,7 @@ void EqDisplay::showBandMenu (int band)
         m.addSubMenu ("Cut slope", slopes, b.type == 0);
     }
     m.addSeparator();
+    m.addItem (3, "Type values...");
     m.addItem (2, "Reset band");
 
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
@@ -793,8 +1365,41 @@ void EqDisplay::showBandMenu (int band)
                          auto& d = *safe;
                          if (r == 1)       d.setAsStep (Band::id (band, ParamID::on), d.params.bands[(size_t) band].on ? 0.0f : 1.0f);
                          else if (r == 2)  d.resetBand (band);
+                         else if (r == 3)  d.openEntry (band, 0);
                          else if (r >= 10 && r <= 11) d.setAsStep (Band::id (band, ParamID::type), (float) (r - 10));
                          else if (r >= 20) d.setAsStep (Band::id (band, ParamID::slope), (float) (r - 20));
+                     });
+}
+
+void EqDisplay::showBackgroundMenu()
+{
+    juce::PopupMenu m;
+    m.addItem (1, "Select all bands");
+    m.addItem (2, "Deselect", selection != 0);
+    m.addSeparator();
+    m.addItem (3, "Switch all bands off");
+    m.addItem (4, "Reset all bands");
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                     [safe = juce::Component::SafePointer<EqDisplay> (this)] (int r)
+                     {
+                         if (safe == nullptr || r == 0) return;
+                         auto& d = *safe;
+                         if (r == 1)      { d.selection = (1u << Band::numBands) - 1u; d.setPrimary (d.selected >= 0 ? d.selected : 1); }
+                         else if (r == 2) d.selectOnly (-1);
+                         else if (r == 3)
+                             d.processor.history.performAsOneStep ([&] { for (int b = 0; b < Band::numBands; ++b) d.setAsStep (Band::id (b, ParamID::on), 0.0f); });
+                         else if (r == 4)
+                             d.processor.history.performAsOneStep ([&]
+                             {
+                                 for (int b = 0; b < Band::numBands; ++b)
+                                     for (auto* name : { ParamID::on, ParamID::freq, ParamID::gain, ParamID::q, ParamID::type, ParamID::slope })
+                                         if (auto* prm = d.processor.apvts.getParameter (Band::id (b, name)))
+                                         {
+                                             prm->beginChangeGesture();
+                                             prm->setValueNotifyingHost (prm->getDefaultValue());
+                                             prm->endChangeGesture();
+                                         }
+                             });
                      });
 }
 

@@ -68,6 +68,14 @@ inline const ModeVoicing& modeVoicing (int index)
 }
 
 // Q actually used by a bell, after the mode's bandwidth rules.
+// Vintage: highs behave like the classic passive tube program EQ. Its high "shelf" boost is really
+// a broad resonant peak that keeps the very top lifted, with a bandwidth that does not change with
+// the amount of boost; its attenuation is a gentle, wide first-order-like shelf.
+inline bool passiveHighs (int mode) { return mode == 0; }
+
+// Peak bandwidth of that high boost for the band's Q (0.71 default = the "broad" setting).
+inline float passiveHighBoostQ (float q) { return std::clamp (0.55f * q / 0.7071f, 0.3f, 4.0f); }
+
 inline float effectiveBellQ (const ModeVoicing& v, float q, float gainDb)
 {
     const float amount = std::min (1.0f, std::abs (gainDb) / 18.0f);

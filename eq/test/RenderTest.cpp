@@ -192,7 +192,6 @@ int main()
         PrismEngine f;
         f.prepare (sr, block, 1);
         f.loadLinearIr (PrismEngine::buildLinearIr (flat, sr));
-        juce::Thread::sleep (200);
         const int lat = PrismEngine::linearLatency (sr);
         juce::AudioBuffer<float> imp (1, block);
         int peakAt = -1; float peak = 0.0f;
@@ -206,6 +205,89 @@ int main()
         }
         near ("linear phase: flat impulse peak position (samples)", peakAt, lat, 0);
         near ("linear phase: flat impulse peak level", peak, 1.0, 0.01);
+    }
+
+    // 9. Band listen: a bell's listen passes its own frequency and rejects far ones.
+    {
+        const double sr = 48000;
+        auto listenDb = [&] (int band, float bandHz, double hz, int type)
+        {
+            auto p = defaults();
+            p.bands[(size_t) band].freq = bandHz;
+            p.bands[(size_t) band].type = type;
+            PrismEngine e;
+            e.prepare (sr, 256, 2);
+            e.solo.band.store (band);
+            juce::AudioBuffer<float> buf (2, 256);
+            double inSq = 0, outSq = 0;
+            for (int pos = 0; pos < (int) sr; pos += 256)
+            {
+                for (int i = 0; i < 256; ++i)
+                {
+                    const float x = 0.25f * (float) std::sin (2.0 * PrismFilters::pi * hz * (pos + i) / sr);
+                    buf.setSample (0, i, x); buf.setSample (1, i, x);
+                    if (pos > sr / 2) inSq += (double) x * x;
+                }
+                e.process (buf, p);
+                if (pos > sr / 2)
+                    for (int i = 0; i < 256; ++i) outSq += (double) buf.getSample (0, i) * buf.getSample (0, i);
+            }
+            return 10.0 * std::log10 (outSq / inSq);
+        };
+        near ("listen: Band 2 @1 kHz, sine at 1 kHz", listenDb (2, 1000, 1000, 0), 0.0, 0.3);
+        check (listenDb (2, 1000, 100, 0) < -15.0, "listen: Band 2 @1 kHz rejects 100 Hz", listenDb (2, 1000, 100, 0), -15.0);
+        check (listenDb (0, 200, 2000, 0) < -30.0, "listen: Low cut @200 Hz plays what it removes (2 kHz silent)", listenDb (0, 200, 2000, 0), -30.0);
+        check (listenDb (0, 200, 50, 0) > -1.0, "listen: Low cut @200 Hz plays 50 Hz", listenDb (0, 200, 50, 0), -1.0);
+    }
+
+    // 10. Vintage highs: the High band's boost is a broad peak (passive tube EQ style), its cut a gentle shelf.
+    {
+        const double sr = 48000;
+        auto vdb = [&] (float gain, double hz)
+        {
+            PrismEngine::BandParams b { true, 8000.0f, gain, 0.71f, 1, 1 };
+            const auto d = PrismEngine::design (Band::high, b, 0, sr);
+            return 20.0 * std::log10 (d.magnitude (2.0 * PrismFilters::pi * hz / sr));
+        };
+        near ("vintage high boost +10 @8 kHz: peak at 8 kHz", vdb (10, 8000), 10.0, 0.2);
+        check (vdb (10, 20000) < vdb (10, 8000) - 1.0, "vintage high boost: falls back above the peak", vdb (10, 20000), vdb (10, 8000) - 1.0);
+        check (vdb (10, 1000) > 0.5 && vdb (10, 1000) < 3.5, "vintage high boost: broad (1 kHz lifted a little)", vdb (10, 1000), 2.0);
+    }
+
+    // 11. Linear Phase: changing the curve while audio plays never jumps (crossfaded hand-over).
+    {
+        const double sr = 48000;
+        const int block = 128;
+        PrismEngine e;
+        e.prepare (sr, block, 1);
+        auto p = defaults();
+        p.linear = true;
+        p.bands[2].gainDb = 12.0f;
+        e.loadLinearIr (PrismEngine::buildLinearIr (p, sr));
+        juce::AudioBuffer<float> buf (1, block);
+        float prev = 0.0f, maxStep = 0.0f;
+        const double hz = 300.0;
+        for (int pos = 0; pos < (int) sr * 2; pos += block)
+        {
+            if (pos > sr / 2 && (pos / block) % 4 == 0)
+            {
+                // A new curve every 4 blocks: the band sweeps and its gain flips sign.
+                p.bands[2].freq = 200.0f + 400.0f * (float) std::fmod (pos / sr, 1.0);
+                p.bands[2].gainDb = (pos / block) % 8 == 0 ? 12.0f : -12.0f;
+                e.loadLinearIr (PrismEngine::buildLinearIr (p, sr));
+            }
+            for (int i = 0; i < block; ++i)
+                buf.setSample (0, i, 0.1f * (float) std::sin (2.0 * PrismFilters::pi * hz * (pos + i) / sr));
+            e.process (buf, p);
+            for (int i = 0; i < block; ++i)
+            {
+                const float s = buf.getSample (0, i);
+                if (pos > sr) maxStep = std::max (maxStep, std::abs (s - prev));
+                prev = s;
+            }
+        }
+        // A 300 Hz sine at up to 0.4 peak moves at most ~0.016 per sample; a click would be far more.
+        check (maxStep < 0.03f, "linear phase: curve changes are click-free (max step)", maxStep, 0.03);
     }
 
     // 8. Torture: random settings changed every block, including band switches. Must stay finite and bounded.

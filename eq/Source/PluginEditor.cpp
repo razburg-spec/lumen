@@ -12,7 +12,7 @@ namespace
 
 //==============================================================================
 PrismView::PrismView (PrismProcessor& p)
-    : processor (p), state (p.apvts),
+    : processor (p),
       modes (*p.apvts.getParameter (ParamID::mode)),
       display (p),
       drive  (p.apvts, ParamID::drive,  "Drive",  Theme::modeColour (4), Knob::Size::Large),
@@ -107,10 +107,13 @@ void PrismView::showManual (bool show)
 
 void PrismView::poll()
 {
+    // The display runs at 60 frames a second; meters and strips at 30.
+    display.poll();
+    if ((++frame & 1) != 0)
+        return;
     auto& m = processor.meters();
     inMeter.setLevel (m.inputPeak.exchange (0.0f));
     outMeter.setLevel (m.outputPeak.exchange (0.0f));
-    display.poll();
     for (auto* s : strips)
         s->refresh();
 }
@@ -163,7 +166,7 @@ void PrismView::paint (juce::Graphics& g)
     g.drawText (juce::String::fromUTF8 ("RAZ BURG AUDIOCRAFTS  \xc2\xb7  ") + juce::String (JucePlugin_Name).toUpperCase() + " " + JucePlugin_VersionString,
                 footer, juce::Justification::centredLeft, false);
     g.setFont (Theme::font (11.0f));
-    g.drawText (juce::String::fromUTF8 ("Drag: freq + gain  \xc2\xb7  Option/Alt-drag or scroll: Q  \xc2\xb7  Shift: lock direction  \xc2\xb7  Right-click: menu"),
+    g.drawText (juce::String::fromUTF8 ("Drag: freq + gain  \xc2\xb7  Shift: fine  \xc2\xb7  Option/Alt: one axis  \xc2\xb7  Cmd/Ctrl-drag or scroll: Q  \xc2\xb7  Hover a point, hold the speaker: listen"),
                 footer, juce::Justification::centredRight, false);
 }
 
@@ -227,7 +230,7 @@ PrismEditor::PrismEditor (PrismProcessor& p)
         constrainer->setFixedAspectRatio (aspect);
     setSize (PrismView::designWidth, PrismView::designHeight);
 
-    startTimerHz (30);
+    startTimerHz (60);
 }
 
 PrismEditor::~PrismEditor()

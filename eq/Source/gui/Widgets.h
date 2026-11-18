@@ -51,7 +51,7 @@ private:
 class PillToggle : public juce::ToggleButton
 {
 public:
-    PillToggle (const juce::String& text, juce::Colour accentColour) : accent (accentColour) { setButtonText (text); }
+    PillToggle (const juce::String& label, juce::Colour accentColour) : accent (accentColour) { setButtonText (label); }
     void setAccent (juce::Colour c) { accent = c; repaint(); }
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 

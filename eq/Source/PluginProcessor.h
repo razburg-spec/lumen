@@ -14,6 +14,7 @@ public:
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
+    using AudioProcessor::processBlock;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
@@ -44,6 +45,10 @@ public:
     PrismEngine::Meters& meters() { return engine.meters; }
     AnalyzerTap& preTap() { return engine.preTap; }
     AnalyzerTap& postTap() { return engine.postTap; }
+
+    // Band listen (from the display; not a parameter, so it is never automated or saved).
+    void setSolo (int band, float levelDb = 0.0f) { engine.solo.levelDb.store (levelDb); engine.solo.band.store (band); }
+    int getSoloBand() const { return engine.solo.band.load(); }
     double getEngineSampleRate() const { return sampleRateForDisplay.load(); }
 
 private:

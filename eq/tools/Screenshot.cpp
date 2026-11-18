@@ -76,7 +76,7 @@ int main (int argc, char** argv)
     if (auto* view = dynamic_cast<PrismView*> (editor->getChildComponent (0)))
         for (auto* c : view->getChildren())
             if (auto* d = dynamic_cast<EqDisplay*> (c))
-                d->setSelectedBand (3);
+                { d->setSelectedBand (3); d->previewHover (3); }
 
     for (float scale : { 1.0f, 2.0f })
     {

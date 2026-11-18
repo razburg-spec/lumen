@@ -19,6 +19,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void poll();
+    int frame = 0;
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -28,7 +29,6 @@ private:
     void selectBand (int band);
 
     PrismProcessor& processor;
-    APVTS& state;
 
     ModeSelector modes;
     EqDisplay display;

@@ -37,7 +37,7 @@ private:
 class Spectrum
 {
 public:
-    static constexpr int order = 12, size = 1 << order, points = 240;
+    static constexpr int order = 12, size = 1 << order, points = 320;
 
     // Pulls new samples from the tap and updates the smoothed curve. Returns true if it changed.
     bool update (AnalyzerTap&, double sampleRate);
@@ -53,15 +53,19 @@ private:
     std::array<float, (size_t) size * 2> work {};
     std::array<float, (size_t) points> curve {};
     std::vector<float> scratch = std::vector<float> (8192);
+    std::array<float, (size_t) size / 2 + 1> binDb {};
+    std::array<float, (size_t) points> raw {};
 };
 
 // The big display: the live spectrum before (gray) and after (mode color) the EQ, the EQ curve on
-// top, and one draggable node per band. Drag a node to set frequency and gain, scroll to set Q,
-// double-click to switch the band on or off.
+// top, and one draggable point per band. Mouse conventions follow the common pro-EQ standard:
+// drag = frequency + gain, Shift = fine, Option/Alt = one axis only, Cmd/Ctrl + vertical drag = Q,
+// scroll = Q, Cmd/Ctrl + scroll = gain. Hovering a point shows its values with a listen button.
 class EqDisplay : public juce::Component
 {
 public:
     explicit EqDisplay (PrismProcessor&);
+    ~EqDisplay() override;
 
     void poll();                      // 30 Hz from the editor
     void setSelectedBand (int b);
@@ -80,6 +84,9 @@ public:
 
     enum class AnalyzerMode { prePost = 0, post = 1, off = 2 };
 
+    // For screenshots: show a band's value bubble as if the mouse were on its listen button.
+    void previewHover (int band);
+
 private:
     juce::Rectangle<float> plot() const;
     float xForFreq (float hz) const;
@@ -94,27 +101,60 @@ private:
     void setParam (const juce::String& id, float plain);
     void drawSpectrum (juce::Graphics&, const Spectrum&, juce::Colour fill, juce::Colour line);
     void drawNodeBubble (juce::Graphics&, int band);
+    void drawSoloRegion (juce::Graphics&, int band);
+    juce::Rectangle<float> bubbleBox (int band) const;
+    juce::Rectangle<float> listenButton (int band) const;
 
-    struct Hit { int band = -1, side = 0; };   // side: -1 / +1 = a width handle, 0 = the point itself
-    Hit hitTest (juce::Point<float>) const;
+    struct PointHit { int band = -1, side = 0; };   // side: -1 / +1 = a width handle, 0 = the point itself
+    PointHit pointAt (juce::Point<float>) const;
     bool hasHandles (int band) const;
     juce::Point<float> handlePosition (int band, int side) const;
-    void beginGestures (int band);
-    void endGestures (int band);
+    bool isCut (int band) const;
+
+    // Selection (several bands can be selected and moved together)
+    bool isSelected (int b) const { return b >= 0 && (selection >> b & 1u) != 0; }
+    void selectOnly (int b);
+    void setPrimary (int b);
+    void selectRange (int from, int to);
+
+    void beginGestures();
+    void endGestures();
     void setAsStep (const juce::String& id, float plain);
     void resetBand (int band);
+    void createBandAt (juce::Point<float>);
     void showBandMenu (int band);
+    void showBackgroundMenu();
+    void rebaseline (juce::Point<float> origin);
 
-    enum class DragMode { move, q, width };
-    DragMode dragMode = DragMode::move;
+    // Typing values: double-click a point, Tab steps Frequency > Gain > Q.
+    class ValueEntry;
+    void openEntry (int band, int field);
+    void closeEntry (bool commit);
+    std::unique_ptr<ValueEntry> entry;
+    int entryBand = -1, entryField = 0;
+
+    enum class DragMode { none, move, q, width, marquee, listen };
+    DragMode dragMode = DragMode::none;
     int dragSide = 0, hoveredSide = 0, axisLock = 0;
-    float startFreq = 1000.0f, startGain = 0.0f, startQ = 1.0f;
+    bool dragQ = false, dragFine = false, moved = false, wasSelected = false, hadSelection = false;
+    juce::uint32 gestureBands = 0;
+    juce::Point<float> dragOrigin, marqueeStart, mousePos;
+    juce::Rectangle<float> marquee;
+    std::array<PrismEngine::BandParams, Band::numBands> startBands {};
+    float wheelSlope = 0.0f;
+    juce::uint32 createdAt = 0;
+    int createdBand = -1;
+
+    // Band listen
+    int listening = -1;
+    float listenLevelDb = 0.0f, listenStartLevel = 0.0f, listenStartFreq = 1000.0f;
 
     PrismProcessor& processor;
     Spectrum pre, post;
     PrismEngine::Params params;
-    int selected = -1, hovered = -1, dragging = -1;
-    bool dragTurnedOn = false;
+    juce::uint32 selection = 0;
+    int selected = -1, hovered = -1, bubbleBand = -1, dragging = -1;
+    bool dragTurnedOn = false, showGhost = false;
 };
 
 // Controls of one band in a card: power, type and slope for the edge bands, Freq, Gain and Q.

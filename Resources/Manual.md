@@ -53,6 +53,7 @@ A shimmer reverb: a lush, modulated reverb with pitch shifters inside its feedba
 - Level: output level of the shimmer.
 - Voice: Smooth, or Reverse (each fragment of the shifted sound plays backwards: softer, like an organ).
 - Advanced: Decay (length of the tail), Size (size of the space; bigger also climbs more slowly), Diffusion (how quickly echoes melt into a smooth wash), Mod (gentle movement that keeps the tail lush), Tone (how high the climbing octaves may go before they are softened) and Low-Cut (keeps low end and downward shifts from getting muddy).
+- Projects saved with Lumen 0.3 open with this shimmer, keeping their intervals, amount, reverse setting and level.
 - Tip: for the classic sound start with Interval A at +12, Shimmer around 50 % and a long Decay, then use Tone to choose between a soft glow and a bright sparkle.
 
 ## Reverb

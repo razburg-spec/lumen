@@ -87,12 +87,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
             case 7: name = "5th"; break;       case 12: name = "Oct"; break;    case 19: name = "Oct+5th"; break;
             case 24: name = "2 Oct"; break;    default: break;
         }
+        if (std::abs (v - (float) st) > 0.005f)    // sessions from 0.3 may hold fractional values
+            return (v > 0 ? "+" : "") + juce::String (v, 2);
         const auto num = (st > 0 ? "+" : "") + juce::String (st);
         return name.isEmpty() ? num : num + " " + name;
     };
-    layout.add (std::make_unique<APF> (juce::ParameterID { shimPitchA, 1 }, "Interval A", Range (-24.0f, 24.0f, 1.0f), 12.0f,
+    layout.add (std::make_unique<APF> (juce::ParameterID { shimPitchA, 1 }, "Interval A", Range (-24.0f, 24.0f, 0.01f), 12.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("st").withStringFromValueFunction (intervalText)));
-    layout.add (std::make_unique<APF> (juce::ParameterID { shimPitchB, 1 }, "Interval B", Range (-24.0f, 24.0f, 1.0f), 0.0f,
+    layout.add (std::make_unique<APF> (juce::ParameterID { shimPitchB, 1 }, "Interval B", Range (-24.0f, 24.0f, 0.01f), 0.0f,
                                        juce::AudioParameterFloatAttributes().withLabel ("st")
                                            .withStringFromValueFunction ([intervalText] (float v, int len)
                                            {

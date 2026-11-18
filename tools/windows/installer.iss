@@ -1,4 +1,5 @@
 ; Windows installer for Raz Burg AudioCrafts plugins (VST3 + AAX).
+; Add /DWithAax=1 to include the AAX (only once it is PACE-signed: retail Pro Tools refuses an unsigned AAX).
 ; Build: ISCC /DPluginName=Lumen /DPluginVersion=0.3.1 /DSourceDir=<dir with X.vst3 and X.aaxplugin> /DOutputDir=<dir> installer.iss
 
 #ifndef PluginName
@@ -27,17 +28,27 @@ SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayName={#PluginName} (Raz Burg AudioCrafts)
 
+#ifdef WithAax
+  #define FullDesc "VST3 and AAX"
+#else
+  #define FullDesc "VST3"
+#endif
+
 [Types]
-Name: "full"; Description: "VST3 and AAX"
+Name: "full"; Description: "{#FullDesc}"
 Name: "custom"; Description: "Custom"; Flags: iscustom
 
 [Components]
 Name: "vst3"; Description: "VST3 (Cubase, Studio One, Live, ...)"; Types: full custom
+#ifdef WithAax
 Name: "aax"; Description: "AAX (Pro Tools)"; Types: full custom
+#endif
 
 [Files]
 Source: "{#SourceDir}\{#PluginName}.vst3\*"; DestDir: "{commoncf64}\VST3\{#PluginName}.vst3"; Components: vst3; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef WithAax
 Source: "{#SourceDir}\{#PluginName}.aaxplugin\*"; DestDir: "{commoncf64}\Avid\Audio\Plug-Ins\{#PluginName}.aaxplugin"; Components: aax; Flags: ignoreversion recursesubdirs createallsubdirs
+#endif
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{commoncf64}\VST3\{#PluginName}.vst3"

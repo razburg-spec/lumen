@@ -11,6 +11,8 @@ on:
 jobs:
   windows:
     runs-on: windows-2022
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: compressor
@@ -61,6 +63,7 @@ jobs:
           "@ | Out-File -Encoding utf8 out/README.txt
 
       - name: Build installer
+        id: installer
         shell: pwsh
         run: |
           $ver = (Select-String -Path CMakeLists.txt -Pattern 'project\(Chroma VERSION ([0-9.]+)').Matches[0].Groups[1].Value
@@ -68,8 +71,24 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
           & $iscc /DPluginName=Chroma /DPluginVersion=$ver "/DSourceDir=$(Resolve-Path out)" "/DOutputDir=$(Resolve-Path out)" "../tools/windows/installer.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "version=$ver" >> $env:GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v4
         with:
           name: Chroma-Windows
           path: compressor/out/
+
+      # A manual run publishes the installer (VST3 only, unsigned) and the raw, not yet PACE-wrapped AAX
+      # as a pre-release, so they can be downloaded without an Actions login.
+      - name: Publish pre-release
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = "${{ steps.installer.outputs.version }}"
+          $tag = "chroma-$ver-windows"
+          Compress-Archive -Force -Path out/Chroma.aaxplugin -DestinationPath out/Chroma-$ver-AAX-unwrapped.zip
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $tag --prerelease --target $env:GITHUB_SHA --title "Chroma $ver for Windows" --notes "Unsigned Windows build. Setup.exe installs the VST3. The AAX zip is not PACE-wrapped yet." }
+          gh release upload $tag out/Chroma-$ver-Windows-Setup.exe out/Chroma-$ver-AAX-unwrapped.zip --clobber

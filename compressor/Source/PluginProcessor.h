@@ -1,4 +1,5 @@
 #pragma once
+#include <rba/StateIO.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Parameters.h"
 #include "dsp/ChromaEngine.h"
@@ -32,6 +33,11 @@ public:
 
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
+
+    // Saved-state format. Bump when a release changes a parameter's ID, range or meaning,
+    // and add the matching step to stateMigrations() plus a golden state in test/state-fixtures.
+    static constexpr int stateVersion = 1;
+    static const std::vector<rba::state::Migration>& stateMigrations();
 
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "ChromaState", createParameterLayout() };
     ParamHistory history { *this };   // undo / redo of the user's edits (lives here so it survives closing the window)

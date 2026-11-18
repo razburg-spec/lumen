@@ -116,17 +116,35 @@ void LumenProcessor::applyEvaluationGaps (juce::AudioBuffer<float>& buffer, int 
     evaluationClock += numSamples;
 }
 
+const std::vector<rba::state::Migration>& LumenProcessor::stateMigrations()
+{
+    // One step per stateVersion bump, oldest first. Never edit a released step.
+    //   { 2, [] (juce::ValueTree& s) { rba::state::renameParam (s, "old", "new"); } },
+    static const std::vector<rba::state::Migration> steps {
+        // 2 (Lumen 0.4.0): the grain shimmer became a shimmer reverb. "Pitch Feedback" becomes the
+        // Shimmer amount, Reverse On/Random becomes the Reverse voice, the grain controls are retired.
+        { 2, [] (juce::ValueTree& s)
+          {
+              using namespace rba::state;
+              setParam (s, ParamID::shimFeedback, juce::jlimit (0.0f, 100.0f, getParam (s, ParamID::shimFeedback, 30.0f) * 1.3f + 10.0f));
+              const int rev = juce::roundToInt (getParam (s, "shimReverse", 0.0f));
+              setParam (s, ParamID::shimVoice, rev >= 1 ? 1.0f : 0.0f);
+              for (auto id : { "shimGrainMs", "shimDensity", "shimSpray", "shimReverse" })
+                  removeParam (s, id);
+          } },
+    };
+    return steps;
+}
+
 void LumenProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts.copyState().createXml())
-        copyXmlToBinary (*xml, destData);
+    rba::state::save (apvts, stateVersion, destData);
 }
 
 void LumenProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary (data, sizeInBytes))
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    // Sessions from every older version open unchanged: see stateMigrations().
+    rba::state::load (apvts, data, sizeInBytes, stateVersion, stateMigrations());
 }
 
 juce::AudioProcessorEditor* LumenProcessor::createEditor()

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<LumenState>
+  <PARAM id="coloration" value="58.0"/>
+  <PARAM id="crossFeed" value="0.0"/>
+  <PARAM id="delayChar" value="2.0"/>
+  <PARAM id="delayDivision" value="13.0"/>
+  <PARAM id="delayDrive" value="23.0"/>
+  <PARAM id="delayDuck" value="0.0"/>
+  <PARAM id="delayFeedback" value="3.100000143051147"/>
+  <PARAM id="delayFreeze" value="0.0"/>
+  <PARAM id="delayHighCut" value="1665.221801757812"/>
+  <PARAM id="delayLevel" value="-30.19999885559082"/>
+  <PARAM id="delayLowCut" value="33.00886154174805"/>
+  <PARAM id="delayModDepth" value="81.0"/>
+  <PARAM id="delayModRate" value="5.68477725982666"/>
+  <PARAM id="delayMode" value="0.0"/>
+  <PARAM id="delayOn" value="1.0"/>
+  <PARAM id="delaySync" value="0.0"/>
+  <PARAM id="delayTimeMs" value="135.28857421875"/>
+  <PARAM id="mix" value="77.0"/>
+  <PARAM id="output" value="-20.89999771118164"/>
+  <PARAM id="revColor" value="0.0"/>
+  <PARAM id="revDecay" value="0.2077604383230209"/>
+  <PARAM id="revDiffusion" value="88.0"/>
+  <PARAM id="revHighCut" value="9000.0"/>
+  <PARAM id="revLevel" value="-9.399997711181641"/>
+  <PARAM id="revLowCut" value="556.2706298828125"/>
+  <PARAM id="revModDepth" value="96.0"/>
+  <PARAM id="revModRate" value="3.074358463287354"/>
+  <PARAM id="revMode" value="4.0"/>
+  <PARAM id="revOn" value="0.0"/>
+  <PARAM id="revPreDelay" value="165.0"/>
+  <PARAM id="revSize" value="47.0"/>
+  <PARAM id="revWidth" value="58.0"/>
+  <PARAM id="routing" value="0.0"/>
+  <PARAM id="shimDensity" value="79.0"/>
+  <PARAM id="shimFeedback" value="17.0"/>
+  <PARAM id="shimGrainMs" value="12.76882457733154"/>
+  <PARAM id="shimLevel" value="3.400001525878906"/>
+  <PARAM id="shimOn" value="1.0"/>
+  <PARAM id="shimPitchA" value="18.23999786376953"/>
+  <PARAM id="shimPitchB" value="-20.84000015258789"/>
+  <PARAM id="shimReverse" value="0.0"/>
+  <PARAM id="shimSpray" value="68.0"/>
+</LumenState>

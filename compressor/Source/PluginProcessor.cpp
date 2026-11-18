@@ -121,17 +121,23 @@ void ChromaProcessor::applyEvaluationGaps (juce::AudioBuffer<float>& main, int n
     evaluationClock += numSamples;
 }
 
+const std::vector<rba::state::Migration>& ChromaProcessor::stateMigrations()
+{
+    // One step per stateVersion bump, oldest first. Never edit a released step.
+    //   { 2, [] (juce::ValueTree& s) { rba::state::renameParam (s, "old", "new"); } },
+    static const std::vector<rba::state::Migration> steps {};
+    return steps;
+}
+
 void ChromaProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts.copyState().createXml())
-        copyXmlToBinary (*xml, destData);
+    rba::state::save (apvts, stateVersion, destData);
 }
 
 void ChromaProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary (data, sizeInBytes))
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    // Sessions from every older version open unchanged: see stateMigrations().
+    rba::state::load (apvts, data, sizeInBytes, stateVersion, stateMigrations());
 }
 
 juce::AudioProcessorEditor* ChromaProcessor::createEditor()

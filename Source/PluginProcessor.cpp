@@ -95,7 +95,7 @@ void LumenProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     coloration.setValue (colorationParam->load());
     coloration.process (buffer);
 
-    if (LicenseConfig::builtIn && licence->grant() != expectedGrant)
+    if (licence->grant() != expectedGrant)
         applyEvaluationGaps (buffer, numSamples);
 }
 

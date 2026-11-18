@@ -3,7 +3,7 @@
 #include "Parameters.h"
 #include "dsp/Router.h"
 #include "dsp/Coloration.h"
-#include "licensing/LicenseManager.h"
+#include <rba/Activation.h>
 #include "ParamHistory.h"
 
 class LumenProcessor : public juce::AudioProcessor
@@ -37,7 +37,7 @@ public:
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "LumenState", createParameterLayout() };
     ParamHistory history { *this };   // undo / redo of the user's edits (lives here so it survives closing the window)
 
-    juce::SharedResourcePointer<LicenseManager> licence;
+    juce::SharedResourcePointer<rba::Activation> licence;
 
 private:
     void applyEvaluationGaps (juce::AudioBuffer<float>&, int numSamples);
@@ -57,7 +57,7 @@ private:
     std::atomic<float>* outputParam = nullptr;
 
     // Evaluation gaps: while unlicensed the effect drops out for a moment every 40 s.
-    const juce::uint32 expectedGrant = LicenseManager::grantFor (LicenseManager::thisMachine());
+    const juce::uint32 expectedGrant = rba::Activation::grantFor (rba::Activation::thisMachine());
     juce::int64 evaluationClock = 0;
     int gapPeriod = 0, gapLength = 0;
 

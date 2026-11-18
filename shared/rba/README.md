@@ -30,3 +30,28 @@ update.onVisibilityChanged = [this] { resized(); };
 
 Releasing: bump `products.<slug>.latest` in the site's `versions.json` when the new
 installers are live, otherwise users are sent to a page that still has the old build.
+
+## Activation (`Activation`, `ActivationPanel`)
+
+Free activation through the user's audiocrafts.razburg.com account (no licence keys,
+no iLok). Max 2 computers per user per plugin. Flow: the plugin opens
+`/account/#activate=<slug>&m=<machine hash>&n=<computer name>&r=<nonce>`, the user
+approves it while signed in, the plugin polls `activation_poll` and stores a token
+(encrypted, machine-bound) under `Raz Burg AudioCrafts/<Plugin>/activation.bin`. It
+re-checks weekly (`activation_check`); offline is fine for 60 days. Until activated,
+`grant()` differs from `grantFor (thisMachine())` and the processor drops the effect out
+briefly every 40 s. The database side lives in the site repo, `supabase/schema.sql`.
+
+Add to a plugin:
+
+```cmake
+target_sources(MyPlugin PRIVATE ../shared/rba/Activation.cpp ../shared/rba/ActivationPanel.cpp)
+target_compile_definitions(MyPlugin PUBLIC RBA_PRODUCT_SLUG=\"prism\")   # also add the product
+# row on the site with needs_activation = true
+```
+
+```cpp
+juce::SharedResourcePointer<rba::Activation> licence;            // in the processor
+rba::ActivationBadge badge { *p.licence, style };                // header badge, onClick opens:
+std::make_unique<rba::ActivationPanel> (*p.licence, style);      // full-window overlay
+```

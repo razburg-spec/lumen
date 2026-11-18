@@ -55,19 +55,19 @@ target_sources(Chroma PRIVATE
     Source/gui/RbaLookAndFeel.cpp
     Source/gui/Widgets.cpp
     Source/gui/ChromaWidgets.cpp
-    Source/gui/ActivationPanel.cpp
     Source/gui/Toolbar.cpp
     Source/presets/FactoryPresets.cpp
-    Source/licensing/LemonSqueezyBackend.cpp
-    Source/licensing/LicenseManager.cpp
     ../shared/rba/UpdateChecker.cpp
-    ../shared/rba/UpdateBanner.cpp)
+    ../shared/rba/UpdateBanner.cpp
+    ../shared/rba/Activation.cpp
+    ../shared/rba/ActivationPanel.cpp)
 target_include_directories(Chroma PRIVATE ../shared)
 
 # The built-in user guide (also published on the website).
 juce_add_binary_data(ChromaData SOURCES Resources/Manual.md)
 
 target_compile_definitions(Chroma PUBLIC
+    RBA_PRODUCT_SLUG=\"chroma\"
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0

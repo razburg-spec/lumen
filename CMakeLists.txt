@@ -62,19 +62,19 @@ target_sources(Lumen PRIVATE
     Source/gui/Widgets.cpp
     Source/gui/Display.cpp
     Source/gui/Sections.cpp
-    Source/gui/ActivationPanel.cpp
     Source/gui/Toolbar.cpp
     Source/presets/FactoryPresets.cpp
-    Source/licensing/LemonSqueezyBackend.cpp
-    Source/licensing/LicenseManager.cpp
     shared/rba/UpdateChecker.cpp
-    shared/rba/UpdateBanner.cpp)
+    shared/rba/UpdateBanner.cpp
+    shared/rba/Activation.cpp
+    shared/rba/ActivationPanel.cpp)
 target_include_directories(Lumen PRIVATE shared)
 
 # The built-in user guide (also published on the website).
 juce_add_binary_data(LumenData SOURCES Resources/Manual.md)
 
 target_compile_definitions(Lumen PUBLIC
+    RBA_PRODUCT_SLUG=\"lumen\"
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0

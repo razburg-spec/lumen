@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<PrismState rbaStateVersion="1" rbaPluginVersion="1.0.0">
+  <PARAM id="b0_freq" value="9529.1005859375"/>
+  <PARAM id="b0_gain" value="-4.699999809265137"/>
+  <PARAM id="b0_on" value="0.0"/>
+  <PARAM id="b0_q" value="1.899999976158142"/>
+  <PARAM id="b0_slope" value="0.0"/>
+  <PARAM id="b0_type" value="0.0"/>
+  <PARAM id="b1_freq" value="2673.400146484375"/>
+  <PARAM id="b1_gain" value="-15.10000038146973"/>
+  <PARAM id="b1_on" value="0.0"/>
+  <PARAM id="b1_q" value="0.3499999940395355"/>
+  <PARAM id="b2_freq" value="12318.6005859375"/>
+  <PARAM id="b2_gain" value="-10.39999961853027"/>
+  <PARAM id="b2_on" value="0.0"/>
+  <PARAM id="b2_q" value="1.0"/>
+  <PARAM id="b3_freq" value="37.80000305175781"/>
+  <PARAM id="b3_gain" value="-4.699999809265137"/>
+  <PARAM id="b3_on" value="0.0"/>
+  <PARAM id="b3_q" value="2.539999961853027"/>
+  <PARAM id="b4_freq" value="753.6000366210938"/>
+  <PARAM id="b4_gain" value="0.0"/>
+  <PARAM id="b4_on" value="0.0"/>
+  <PARAM id="b4_q" value="6.569999694824219"/>
+  <PARAM id="b5_freq" value="6043.30029296875"/>
+  <PARAM id="b5_gain" value="4.700000762939453"/>
+  <PARAM id="b5_on" value="1.0"/>
+  <PARAM id="b5_q" value="10.26000022888184"/>
+  <PARAM id="b5_slope" value="1.0"/>
+  <PARAM id="b5_type" value="1.0"/>
+  <PARAM id="drive" value="71.0"/>
+  <PARAM id="linear" value="0.0"/>
+  <PARAM id="mode" value="5.0"/>
+  <PARAM id="output" value="0.0"/>
+</PrismState>

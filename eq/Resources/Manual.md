@@ -77,3 +77,15 @@ Clicking
 - Prism opens flat and passes the audio untouched. Reset returns to that state.
 - Undo and Redo keep up to 100 steps. Double-click a knob to reset it.
 - Zero latency (unless Linear Phase is on).
+- Sessions saved with any earlier version of Prism open exactly as they were saved.
+
+## Licence
+
+- Prism is free. Get it from My plugins at audiocrafts.razburg.com, with your free site account.
+- The first time you open Prism, click Activate in browser. Your browser opens My plugins: sign in and click Activate there, and Prism unlocks by itself a few seconds later. No licence key, no iLok.
+- Each account can activate Prism on up to two computers. To move it, click the ACTIVATED badge and choose Deactivate this computer, or remove the computer in My plugins.
+- Prism checks its activation online about once a week. Offline is fine for up to 60 days. Until Prism is activated, the effect drops out for a moment every 40 seconds.
+
+## Updates
+
+When you open Prism, it quietly checks audiocrafts.razburg.com for a newer version. If there is one, a small notice appears at the bottom right of the window. Click Download to open My plugins in your browser, or click the x to hide the notice until the next release. The check never affects the sound, and nothing appears when you are offline.

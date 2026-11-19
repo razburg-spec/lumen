@@ -4,6 +4,8 @@
 #include "gui/RbaLookAndFeel.h"
 #include "gui/PrismWidgets.h"
 #include "gui/Toolbar.h"
+#include <rba/UpdateBanner.h>
+#include <rba/ActivationPanel.h>
 
 // The whole interface, laid out at a fixed design size. The editor scales it as a
 // unit, so everything stays vector-sharp at any window size.
@@ -24,6 +26,7 @@ public:
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void showManual (bool show);
+    void showActivation (bool show);
     void updateHistoryButtons();
     void applyModeColour (int mode);
     void selectBand (int band);
@@ -43,6 +46,14 @@ private:
     ToolButton undoButton { "Undo", ToolButton::Glyph::undo }, redoButton { "Redo", ToolButton::Glyph::redo },
                resetButton { "Reset" }, helpButton { "User guide", ToolButton::Glyph::help };
     std::unique_ptr<ManualPanel> manual;
+
+    rba::Activation& licence;
+    rba::ActivationBadge licenceBadge;
+    std::unique_ptr<rba::ActivationPanel> activation;
+
+    // Small "new version available" pill in the footer (hidden unless there is one).
+    rba::UpdateBanner update { "Prism", "prism", JucePlugin_VersionString,
+                               { Theme::surface, Theme::line, Theme::text, Theme::muted, Theme::brandBlue } };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PrismView)
 };

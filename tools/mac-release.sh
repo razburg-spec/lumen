@@ -1,5 +1,5 @@
 #!/bin/bash
-# Signs, packages and notarizes a plugin (Lumen by default, PLUGIN=Chroma for the compressor) for macOS.
+# Signs, packages and notarizes a plugin (Lumen by default, PLUGIN=Chroma or PLUGIN=Prism) for macOS.
 #
 #   PLUGIN=Lumen \
 #   DEV_ID_APP="Developer ID Application: Name (TEAMID)" \

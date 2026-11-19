@@ -83,6 +83,10 @@ void PrismProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.prepare (sampleRate, samplesPerBlock, getMainBusNumOutputChannels());
     sampleRateForDisplay.store (sampleRate);
+    dryBuffer.setSize (juce::jmax (1, getMainBusNumOutputChannels()), samplesPerBlock);
+    gapPeriod = juce::roundToInt (sampleRate * 40.0);
+    gapLength = juce::roundToInt (sampleRate * 1.5);
+    evaluationClock = 0;
     if (isLinearPhase())
         engine.loadLinearIr (PrismEngine::buildLinearIr (currentParams(), sampleRate));
     updateLatency();
@@ -121,23 +125,59 @@ void PrismProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, buffer.getNumSamples());
 
+    const int numSamples = buffer.getNumSamples();
+    const bool unlicensed = licence->grant() != expectedGrant;
+    if (unlicensed)
+    {
+        dryBuffer.setSize (buffer.getNumChannels(), numSamples, false, false, true);
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            dryBuffer.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+    }
+
     const auto params = currentParams();
     if (params.linear != reportedLinear.load())
         triggerAsyncUpdate();
     engine.process (buffer, params);
+
+    if (unlicensed)
+        applyEvaluationGaps (buffer, numSamples);
+}
+
+const std::vector<rba::state::Migration>& PrismProcessor::stateMigrations()
+{
+    // One step per stateVersion bump, oldest first. Never edit a released step.
+    //   { 2, [] (juce::ValueTree& s) { rba::state::renameParam (s, "old", "new"); } },
+    static const std::vector<rba::state::Migration> steps {};
+    return steps;
 }
 
 void PrismProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts.copyState().createXml())
-        copyXmlToBinary (*xml, destData);
+    rba::state::save (apvts, stateVersion, destData);
 }
 
 void PrismProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary (data, sizeInBytes))
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    // Sessions from every older version (including the 0.x test builds) open unchanged.
+    rba::state::load (apvts, data, sizeInBytes, stateVersion, stateMigrations());
+}
+
+void PrismProcessor::applyEvaluationGaps (juce::AudioBuffer<float>& buffer, int numSamples)
+{
+    if (gapPeriod <= 0)
+        return;
+
+    // The track passes unprocessed for gapLength samples out of every gapPeriod, starting 20 s in.
+    // In Linear Phase the dry signal is behind by the latency; the gap is short enough not to matter.
+    const int numCh = juce::jmin (buffer.getNumChannels(), dryBuffer.getNumChannels());
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const auto phase = (evaluationClock + i) % gapPeriod;
+        if (phase >= gapPeriod / 2 && phase < gapPeriod / 2 + gapLength)
+            for (int ch = 0; ch < numCh; ++ch)
+                buffer.setSample (ch, i, dryBuffer.getSample (ch, i));
+    }
+    evaluationClock += numSamples;
 }
 
 juce::AudioProcessorEditor* PrismProcessor::createEditor()

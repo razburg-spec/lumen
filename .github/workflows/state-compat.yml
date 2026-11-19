@@ -16,6 +16,7 @@ jobs:
         include:
           - { plugin: Lumen,  dir: ".",          option: LUMEN_STATE_TEST }
           - { plugin: Chroma, dir: "compressor", option: CHROMA_STATE_TEST }
+          - { plugin: Prism,  dir: "eq",         option: PRISM_STATE_TEST }
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies

@@ -1,8 +1,24 @@
 // Renders the Prism interface to image files, for the website and for checking the layout.
-// Usage: PrismScreenshot <out-dir> [mode 0-5]
+// Usage: PrismScreenshot <out-dir> [mode 0-5] [linear|activate]
+// "activate" keeps the activation window that a not-yet-activated computer sees.
 #include "../Source/PluginProcessor.h"
 #include "../Source/PluginEditor.h"
+#include <rba/ActivationPanel.h>
 #include <random>
+
+static bool keepActivation = false;
+
+static void hideOverlays (juce::Component& c)
+{
+    if (keepActivation)
+        return;
+    for (auto* child : c.getChildren())
+    {
+        if (dynamic_cast<rba::ActivationPanel*> (child) != nullptr)
+            child->setVisible (false);
+        hideOverlays (*child);
+    }
+}
 
 static void set (PrismProcessor& p, const juce::String& id, float plain)
 {
@@ -23,6 +39,7 @@ int main (int argc, char** argv)
     const juce::File outDir (argc > 1 ? juce::String (argv[1]) : juce::File::getCurrentWorkingDirectory().getFullPathName());
     const int mode = argc > 2 ? juce::String (argv[2]).getIntValue() : 4;
     outDir.createDirectory();
+    keepActivation = argc > 3 && juce::String (argv[3]) == "activate";
 
     std::unique_ptr<PrismProcessor> proc (dynamic_cast<PrismProcessor*> (createPluginFilter()));
     set (*proc, ParamID::mode, (float) mode);
@@ -78,10 +95,11 @@ int main (int argc, char** argv)
             if (auto* d = dynamic_cast<EqDisplay*> (c))
                 { d->setSelectedBand (3); d->previewHover (3); }
 
+    hideOverlays (*editor);
     for (float scale : { 1.0f, 2.0f })
     {
         auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, scale);
-        const auto suffix = scale > 1.5f ? "-2x" : "";
+        const auto suffix = juce::String (keepActivation ? "-activate" : "") + (scale > 1.5f ? "-2x" : "");
         auto file = outDir.getChildFile ("prism-" + juce::String (mode) + suffix + ".png");
         file.deleteFile();
         juce::FileOutputStream out (file);

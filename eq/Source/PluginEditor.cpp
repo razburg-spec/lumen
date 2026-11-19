@@ -8,6 +8,14 @@ namespace
     constexpr int footerHeight = 30;
     constexpr int gap = 12;
     constexpr int displayHeight = 330;
+
+    rba::ActivationStyle activationStyle (juce::Colour warning)
+    {
+        rba::ActivationStyle s { Theme::bg, Theme::surface, Theme::raised, Theme::line, Theme::text, Theme::muted, Theme::faint,
+                                 Theme::brandBlue, Theme::brandTop, Theme::brandBottom, Theme::brandCyan, warning, {} };
+        s.drawLogo = [] (juce::Graphics& g, juce::Rectangle<float> area) { drawBrandMark (g, area); };
+        return s;
+    }
 }
 
 //==============================================================================
@@ -18,7 +26,9 @@ PrismView::PrismView (PrismProcessor& p)
       drive  (p.apvts, ParamID::drive,  "Drive",  Theme::modeColour (4), Knob::Size::Large),
       output (p.apvts, ParamID::output, "Output", Theme::modeColour (4), Knob::Size::Large, true),
       linearAttachment (p.apvts, ParamID::linear, linearPhase),
-      presets (p.apvts, p.history)
+      presets (p.apvts, p.history),
+      licence (*p.licence),
+      licenceBadge (*p.licence, activationStyle (Theme::modeColour (0)))
 {
     addAndMakeVisible (modes);
     addAndMakeVisible (display);
@@ -53,6 +63,16 @@ PrismView::PrismView (PrismProcessor& p)
     helpButton.onClick = [this] { showManual (manual == nullptr); };
     processor.history.addChangeListener (this);
     updateHistoryButtons();
+
+    addChildComponent (update);
+    update.onVisibilityChanged = [this] { resized(); repaint(); };
+
+    addAndMakeVisible (licenceBadge);
+    licenceBadge.onClick = [this] { showActivation (true); };
+
+    // Ask straight away whenever Prism is not activated on this computer.
+    if (! licence.isActivated())
+        showActivation (true);
 }
 
 PrismView::~PrismView()
@@ -103,6 +123,22 @@ void PrismView::showManual (bool show)
     addAndMakeVisible (*manual);
     manual->setBounds (getLocalBounds());
     manual->grabKeyboardFocus();
+    if (activation != nullptr)
+        activation->toFront (false);
+}
+
+void PrismView::showActivation (bool show)
+{
+    if (! show)
+    {
+        activation.reset();
+        return;
+    }
+    activation = std::make_unique<rba::ActivationPanel> (licence, activationStyle (Theme::modeColour (0)));
+    activation->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<PrismView> (this)]
+                                                                     { if (safe != nullptr) safe->showActivation (false); }); };
+    addAndMakeVisible (*activation);
+    activation->setBounds (getLocalBounds());
 }
 
 void PrismView::poll()
@@ -166,7 +202,8 @@ void PrismView::paint (juce::Graphics& g)
     g.drawText (juce::String::fromUTF8 ("RAZ BURG AUDIOCRAFTS  \xc2\xb7  ") + juce::String (JucePlugin_Name).toUpperCase() + " " + JucePlugin_VersionString,
                 footer, juce::Justification::centredLeft, false);
     g.setFont (Theme::font (11.0f));
-    g.drawText (juce::String::fromUTF8 ("Drag: freq + gain  \xc2\xb7  Shift: fine  \xc2\xb7  Option/Alt: one axis  \xc2\xb7  Cmd/Ctrl-drag or scroll: Q  \xc2\xb7  Hover a point, hold the speaker: listen"),
+    if (! update.isVisible())   // the update pill takes this spot when shown
+        g.drawText (juce::String::fromUTF8 ("Drag: freq + gain  \xc2\xb7  Shift: fine  \xc2\xb7  Option/Alt: one axis  \xc2\xb7  Cmd/Ctrl-drag or scroll: Q  \xc2\xb7  Hover a point, hold the speaker: listen"),
                 footer, juce::Justification::centredRight, false);
 }
 
@@ -175,11 +212,17 @@ void PrismView::resized()
     auto r = getLocalBounds();
     auto header = r.removeFromTop (headerHeight).reduced (margin, 0);
     auto toolbar = r.removeFromTop (toolbarHeight).reduced (margin, 0).withTrimmedBottom (10);
-    r.removeFromBottom (footerHeight);
+    {
+        const auto footer = r.removeFromBottom (footerHeight).reduced (margin, 0);
+        update.setBounds (footer.withLeft (footer.getRight() - update.getIdealWidth()).withSizeKeepingCentre (update.getIdealWidth(), 24));
+    }
     r = r.reduced (margin, 0);
 
     modes.setBounds (header.removeFromRight (600).withSizeKeepingCentre (600, 34).translated (0, -6));
-    if (manual != nullptr) manual->setBounds (getLocalBounds());
+    header.removeFromRight (18);
+    licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26).translated (0, -6));
+    if (activation != nullptr) activation->setBounds (getLocalBounds());
+    if (manual != nullptr)     manual->setBounds (getLocalBounds());
 
     toolbar.removeFromLeft (64);
     presets.setBounds (toolbar.removeFromLeft (360));
@@ -226,8 +269,8 @@ PrismEditor::PrismEditor (PrismProcessor& p)
     setResizable (true, true);
     setResizeLimits (PrismView::designWidth * 6 / 10, PrismView::designHeight * 6 / 10,
                      PrismView::designWidth * 2, PrismView::designHeight * 2);
-    if (auto* constrainer = getConstrainer())
-        constrainer->setFixedAspectRatio (aspect);
+    if (auto* c = getConstrainer())
+        c->setFixedAspectRatio (aspect);
     setSize (PrismView::designWidth, PrismView::designHeight);
 
     startTimerHz (60);

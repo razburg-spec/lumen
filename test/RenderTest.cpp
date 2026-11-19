@@ -186,11 +186,67 @@ static int measure()
     return 0;
 }
 
+
+// Shimmer envelope: prints the level every half second and how the energy spreads over octaves,
+// for tuning the shimmer loop. Usage: RenderTest shimmer <amount%> <intervalA> <decay s> [intervalB] [voice]
+static int shimmerEnvelope (int argc, char** argv)
+{
+    Host h;
+    set (h, ParamID::shimFeedback, argc > 2 ? (float) std::atof (argv[2]) : 50.0f);
+    set (h, ParamID::shimPitchA, argc > 3 ? (float) std::atof (argv[3]) : 12.0f);
+    set (h, ParamID::shimDecay, argc > 4 ? (float) std::atof (argv[4]) : 6.0f);
+    set (h, ParamID::shimPitchB, argc > 5 ? (float) std::atof (argv[5]) : 0.0f);
+    set (h, ParamID::shimVoice, argc > 6 ? (float) std::atof (argv[6]) : 0.0f);
+    const double sr = 48000.0; const int block = 256;
+    Router r; r.attach (h.apvts); r.setTempo (120.0); r.prepare ({ sr, (juce::uint32) block, 2 });
+    juce::AudioBuffer<float> b (2, block);
+    const int half = (int) sr / 2;
+    std::vector<float> seg; seg.reserve ((size_t) half);
+    // Octave bands around the 220 Hz input: 110, 220, 440, 880, 1760, 3520 Hz.
+    const float bands[] = { 110.0f, 220.0f, 440.0f, 880.0f, 1760.0f, 3520.0f, 7040.0f };
+    for (int pos = 0; pos < (int) (sr * 14.0); pos += block)
+    {
+        for (int i = 0; i < block; ++i)
+        {
+            const double t = (pos + i) / sr;
+            float x = 0;
+            if (t < 0.5)
+                x = (float) (std::exp (-t / 0.15) * 0.3 * (std::sin (juce::MathConstants<double>::twoPi * 220.0 * t)
+                                                         + std::sin (juce::MathConstants<double>::twoPi * 277.2 * t)));
+            b.setSample (0, i, x); b.setSample (1, i, x);
+        }
+        r.process (b, { Router::Mode::Serial, false, true, false });
+        for (int i = 0; i < block; ++i) seg.push_back (b.getSample (0, i));
+        if ((int) seg.size() >= half)
+        {
+            double e = 0; for (auto v : seg) e += v * v;
+            std::printf ("%5.1fs %6.1f dB |", (pos + block) / sr, 10.0 * std::log10 (e / (double) seg.size() + 1e-20));
+            // Goertzel-ish band energy (bins summed over +-1/3 octave).
+            for (float f0 : bands)
+            {
+                double be = 0;
+                for (float f = f0 * 0.8f; f <= f0 * 1.25f; f += 2.0f)
+                {
+                    double re = 0, im = 0; const double w = juce::MathConstants<double>::twoPi * f / sr;
+                    for (size_t k = 0; k < seg.size(); k += 1) { re += seg[k] * std::cos (w * (double) k); im += seg[k] * std::sin (w * (double) k); }
+                    be += re * re + im * im;
+                }
+                std::printf (" %4.0f:%6.1f", f0, 10.0 * std::log10 (be / (double) seg.size() / (double) seg.size() + 1e-20));
+            }
+            std::printf ("\n");
+            seg.clear();
+        }
+    }
+    return 0;
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI init;
     if (argc > 1 && juce::String (argv[1]) == "measure")
         return measure();
+    if (argc > 1 && juce::String (argv[1]) == "shimmer")
+        return shimmerEnvelope (argc, argv);
     if (argc > 1 && juce::String (argv[1]) == "loudness")
         return loudness();
     int failures = 0;
@@ -224,15 +280,22 @@ int main (int argc, char** argv)
                [&h] (double t) { if (t > 0.3) set (h, ParamID::delayFreeze, 1.0f); }), true);
     }
     {
-        Host h; check ("shimmer only", render (h, { M::Serial, false, true, false }, "shimmer.wav"), false);
+        Host h; check ("shimmer only", render (h, { M::Serial, false, true, false }, "shimmer.wav", 8.0f), true);
     }
     {
-        Host h; set (h, ParamID::shimReverse, 1.0f); set (h, ParamID::shimGrainMs, 400.0f);
+        Host h; set (h, ParamID::shimVoice, 1.0f); set (h, ParamID::shimPitchB, 7.0f);
         check ("shimmer reverse", render (h, { M::Serial, false, true, false }, "tmp.wav"), true);
     }
     {
-        Host h; set (h, ParamID::shimFeedback, 100.0f); set (h, ParamID::shimDensity, 100.0f);
-        check ("shimmer fb 100%", render (h, { M::Serial, false, true, false }, "shimfb.wav", 12.0f), false);
+        Host h; set (h, ParamID::shimFeedback, 100.0f); set (h, ParamID::shimDecay, 30.0f); set (h, ParamID::shimTone, 16000.0f);
+        set (h, ParamID::shimPitchB, 24.0f); set (h, ParamID::shimSize, 100.0f);
+        check ("shimmer 100% 30s", render (h, { M::Serial, false, true, false }, "shimfb.wav", 30.0f), true);
+    }
+    for (float st : { -24.0f, -12.0f, 0.0f, 7.0f, 12.0f, 24.0f })
+    {
+        Host h; set (h, ParamID::shimPitchA, st); set (h, ParamID::shimFeedback, 100.0f); set (h, ParamID::shimDecay, 30.0f);
+        char nm[64]; std::snprintf (nm, sizeof nm, "shimmer %+d st 100%%", (int) st);
+        check (nm, render (h, { M::Serial, false, true, false }, "tmp.wav", 20.0f), true);
     }
     static const char* eraNames[] = { "60s", "70s", "80s", "90s", "Now" };
     for (int m = 0; m < 6; ++m)

@@ -73,3 +73,4 @@ jobs:
         with:
           name: Chroma-Windows
           path: compressor/out/
+          retention-days: 7

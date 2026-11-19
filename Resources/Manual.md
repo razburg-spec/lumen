@@ -1,6 +1,6 @@
 # Lumen User Guide
 
-Lumen is a reverb, delay and granular shimmer processor by Raz Burg AudioCrafts. Three engines can run alone or together, in series or in parallel, with a global Coloration stage on the output.
+Lumen is a reverb, delay and shimmer reverb processor by Raz Burg AudioCrafts. Three engines can run alone or together, in series or in parallel, with a global Coloration stage on the output.
 
 ## Quick start
 
@@ -20,14 +20,14 @@ Lumen is a reverb, delay and granular shimmer processor by Raz Burg AudioCrafts.
 ## Header
 
 - Signal Flow chooses how the engines are connected:
-- Serial: Delay feeds Shimmer, which feeds Reverb. Echoes are smeared into the space.
+- Serial: Delay feeds Shimmer, which feeds Reverb. Echoes are smeared into the space, and the shimmer gets an extra layer of room.
 - Parallel: each engine hears the dry signal on its own, and their outputs are summed. Clearer and more defined.
 - Reverb › Delay: the reverb comes first and the delay repeats the reverb tail. Good for big ambient throws.
 - Advanced: shows every parameter of each engine, below its main knobs.
 
 ## Display
 
-The display shows one time line with the dry hit, the delay repeats, the shimmer grains and the reverb envelope, each in its engine's colour. It follows every knob move immediately.
+The display shows one time line with the dry hit, the delay repeats, the rising shimmer and the reverb envelope, each in its engine's colour. It follows every knob move immediately.
 
 ## Delay
 
@@ -45,14 +45,16 @@ A tempo-synced stereo delay with analog, tape and lo-fi characters.
 
 ## Shimmer
 
-A granular pitch shifter in a feedback loop, for octave-up halos and evolving textures.
+A shimmer reverb: a lush, modulated reverb with pitch shifters inside its feedback loop. Each time the tail goes round the loop, part of it is shifted up (or down) again, so the sound climbs octave by octave into a bright, choir-like wash that grows out of what you play. It is a complete reverb of its own and works without the Reverb section.
 
-- Pitch A and Pitch B: two grain voices, each shifted from -24 to +24 semitones. +12 is an octave up, +7 a fifth.
-- Feedback: feeds the shifted grains back into the shifter, so each pass climbs or falls again.
+- Interval A: the main pitch step of each pass, from -24 to +24 semitones. +12 (an octave up) is the classic shimmer; +7 is a fifth, +19 an octave and a fifth.
+- Interval B: a second, quieter voice, for example +7 over the octave, or -12 for an octave down underneath. Off at 0.
+- Shimmer: how much of the tail is pitch shifted on each pass, which sets how fast and how far the sound climbs. Low values add a gentle halo; high values bloom into a rising cloud.
 - Level: output level of the shimmer.
-- Reverse: Off, On (grains play backwards) or Random.
-- Advanced: Grain (length of each grain, short is glassy and long is smooth), Density (how many grains overlap), Spray (random timing of the grains).
-- Tip: in Serial routing the shimmer feeds the reverb, which turns the grains into a smooth wash.
+- Voice: Smooth, or Reverse (each fragment of the shifted sound plays backwards: softer, like an organ).
+- Advanced: Decay (length of the tail), Size (size of the space; bigger also climbs more slowly), Diffusion (how quickly echoes melt into a smooth wash), Mod (gentle movement that keeps the tail lush), Tone (how high the climbing octaves may go before they are softened) and Low-Cut (keeps low end and downward shifts from getting muddy).
+- Projects saved with Lumen 0.3 open with this shimmer, keeping their intervals, amount, reverse setting and level.
+- Tip: for the classic sound start with Interval A at +12, Shimmer around 50 % and a long Decay, then use Tone to choose between a soft glow and a bright sparkle.
 
 ## Reverb
 
@@ -99,7 +101,7 @@ An algorithmic reverb: six types of space, each available in five eras.
 - Keys & Piano: halls and rooms for piano, Rhodes and organ.
 - Synths & Pads: shimmer pads, lush halls and rhythmic echoes.
 - Strings & Orchestral: scoring stages and concert halls.
-- Ambient & FX: freezes, reverse grains and runaway feedback.
+- Ambient & FX: freezes, reverse shimmers and runaway feedback.
 - Vintage: the 60s, 70s, 80s and 90s studio sounds.
 - Send (100% Wet): ready-made aux returns.
 

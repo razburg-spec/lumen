@@ -31,6 +31,30 @@ update.onVisibilityChanged = [this] { resized(); };
 Releasing: bump `products.<slug>.latest` in the site's `versions.json` when the new
 installers are live, otherwise users are sent to a page that still has the old build.
 
+## Saved sessions stay compatible (`StateIO.h`)
+
+Rule: a session saved with any older version must open exactly the same in every newer
+version, for every plugin. Processors save and load through `rba::state::save/load`:
+
+```cpp
+void getStateInformation (juce::MemoryBlock& d) override { rba::state::save (apvts, stateVersion, d); }
+void setStateInformation (const void* data, int size) override
+{ rba::state::load (apvts, data, size, stateVersion, stateMigrations()); }
+```
+
+- Parameter IDs are permanent. Never rename, reuse or change the meaning/range of one in place.
+- When a release must change a parameter (ID, range, meaning) or retire one: bump
+  `stateVersion` in PluginProcessor.h and add a step to `stateMigrations()`, e.g.
+  `{ 2, [] (juce::ValueTree& s) { using namespace rba::state;
+         setParam (s, "newAmount", juce::jlimit (0.0f, 100.0f, getParam (s, "oldAmount", 30.0f) * 1.3f + 10.0f));
+         removeParam (s, "oldAmount"); } }`
+  Steps see the old state with all its old params (values in real units), before anything is dropped.
+- Params missing from an old state get their defaults; unknown params are ignored.
+- Every release adds a golden state: build with `-D<PLUGIN>_STATE_TEST=ON`, run
+  `<Plugin>StateTest write test/state-fixtures/<plugin>-<version>.xml`, commit it. If a
+  migration changes values, add `<plugin>-<version>.expect.xml` (`<EXPECT><PARAM id=".." value=".."/></EXPECT>`)
+  with the translated values. `<Plugin>StateTest` must pass before a release (CI runs it).
+
 ## Activation (`Activation`, `ActivationPanel`)
 
 Free activation through the user's audiocrafts.razburg.com account (no licence keys,

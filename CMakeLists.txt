@@ -88,3 +88,16 @@ target_compile_definitions(Lumen PUBLIC
 target_link_libraries(Lumen
     PRIVATE LumenData juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+
+# Backward-compatibility test: every golden state in test/state-fixtures must load
+# correctly in this build (cmake -DLUMEN_STATE_TEST=ON, target LumenStateTest).
+option(LUMEN_STATE_TEST "Build the saved-state compatibility test" OFF)
+if(LUMEN_STATE_TEST)
+    juce_add_console_app(LumenStateTest)
+    target_sources(LumenStateTest PRIVATE shared/rba/StateCompatTest.cpp)
+    target_compile_definitions(LumenStateTest PRIVATE $<TARGET_PROPERTY:Lumen,COMPILE_DEFINITIONS>
+        RBA_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/state-fixtures")
+    target_include_directories(LumenStateTest PRIVATE $<TARGET_PROPERTY:Lumen,INCLUDE_DIRECTORIES>)
+    target_link_libraries(LumenStateTest PRIVATE Lumen LumenData)
+endif()
+

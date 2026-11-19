@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<ChromaState>
+  <PARAM id="attack" value="10.0"/>
+  <PARAM id="character" value="1.0"/>
+  <PARAM id="input" value="21.0"/>
+  <PARAM id="keyFreq" value="6162.0"/>
+  <PARAM id="keyListen" value="1.0"/>
+  <PARAM id="keyOn" value="1.0"/>
+  <PARAM id="keySource" value="0.0"/>
+  <PARAM id="output" value="-13.89999961853027"/>
+  <PARAM id="parallel" value="42.0"/>
+  <PARAM id="ratio" value="5.449999809265137"/>
+  <PARAM id="release" value="1199.0"/>
+  <PARAM id="saturation" value="87.0"/>
+  <PARAM id="softClip" value="0.0"/>
+</ChromaState>

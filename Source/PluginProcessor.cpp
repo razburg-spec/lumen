@@ -116,17 +116,23 @@ void LumenProcessor::applyEvaluationGaps (juce::AudioBuffer<float>& buffer, int 
     evaluationClock += numSamples;
 }
 
+const std::vector<rba::state::Migration>& LumenProcessor::stateMigrations()
+{
+    // One step per stateVersion bump, oldest first. Never edit a released step.
+    //   { 2, [] (juce::ValueTree& s) { rba::state::renameParam (s, "old", "new"); } },
+    static const std::vector<rba::state::Migration> steps {};
+    return steps;
+}
+
 void LumenProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts.copyState().createXml())
-        copyXmlToBinary (*xml, destData);
+    rba::state::save (apvts, stateVersion, destData);
 }
 
 void LumenProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary (data, sizeInBytes))
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    // Sessions from every older version open unchanged: see stateMigrations().
+    rba::state::load (apvts, data, sizeInBytes, stateVersion, stateMigrations());
 }
 
 juce::AudioProcessorEditor* LumenProcessor::createEditor()

@@ -11,6 +11,8 @@ on:
 jobs:
   windows:
     runs-on: windows-2022
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -58,6 +60,7 @@ jobs:
           "@ | Out-File -Encoding utf8 out/README.txt
 
       - name: Build installer
+        id: installer
         shell: pwsh
         run: |
           $ver = (Select-String -Path CMakeLists.txt -Pattern 'project\(Lumen VERSION ([0-9.]+)').Matches[0].Groups[1].Value
@@ -65,9 +68,25 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
           & $iscc /DPluginName=Lumen /DPluginVersion=$ver "/DSourceDir=$(Resolve-Path out)" "/DOutputDir=$(Resolve-Path out)" "tools/windows/installer.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "version=$ver" >> $env:GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v4
         with:
           name: Lumen-Windows
           path: out/
           retention-days: 7
+
+      # A manual run publishes the installer (VST3 only, unsigned) and the raw, not yet PACE-wrapped AAX
+      # as a pre-release, so they can be downloaded without an Actions login.
+      - name: Publish pre-release
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = "${{ steps.installer.outputs.version }}"
+          $tag = "lumen-$ver-windows"
+          Compress-Archive -Force -Path out/Lumen.aaxplugin -DestinationPath out/Lumen-$ver-AAX-unwrapped.zip
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $tag --prerelease --target $env:GITHUB_SHA --title "Lumen $ver for Windows" --notes "Unsigned Windows build. Setup.exe installs the VST3. The AAX zip is not PACE-wrapped yet." }
+          gh release upload $tag out/Lumen-$ver-Windows-Setup.exe out/Lumen-$ver-AAX-unwrapped.zip --clobber

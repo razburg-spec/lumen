@@ -207,18 +207,21 @@ void DelaySection::resized()
 }
 
 ShimmerSection::ShimmerSection (APVTS& s)
-    : EngineSection (s, "Shimmer", "PITCH / GRAIN", Theme::shimmer, ParamID::shimOn)
+    : EngineSection (s, "Shimmer", "PITCHED SPACE", Theme::shimmer, ParamID::shimOn)
 {
-    addMain (ParamID::shimPitchA, "Pitch A", true);
-    addMain (ParamID::shimPitchB, "Pitch B", true);
-    addMain (ParamID::shimFeedback, "Feedback");
+    addMain (ParamID::shimPitchA, "Interval A", true);
+    addMain (ParamID::shimPitchB, "Interval B", true);
+    addMain (ParamID::shimFeedback, "Shimmer");
     addMain (ParamID::shimLevel, "Level");
 
-    addAdvanced (ParamID::shimGrainMs, "Grain");
-    addAdvanced (ParamID::shimDensity, "Density");
-    addAdvanced (ParamID::shimSpray, "Spray");
+    addAdvanced (ParamID::shimDecay, "Decay");
+    addAdvanced (ParamID::shimSize, "Size");
+    addAdvanced (ParamID::shimDiffusion, "Diffusion");
+    addAdvanced (ParamID::shimMod, "Mod");
+    addAdvanced (ParamID::shimTone, "Tone");
+    addAdvanced (ParamID::shimLowCut, "Low-Cut");
 
-    addCombo (ParamID::shimReverse);
+    addCombo (ParamID::shimVoice);
     poll();
 }
 

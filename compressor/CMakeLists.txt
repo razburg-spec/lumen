@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 
-project(Chroma VERSION 0.1.3 LANGUAGES C CXX)
+project(Chroma VERSION 0.1.4 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -86,3 +86,16 @@ if(CHROMA_SCREENSHOT_TOOL)
     target_include_directories(ChromaScreenshot PRIVATE $<TARGET_PROPERTY:Chroma,INCLUDE_DIRECTORIES>)
     target_link_libraries(ChromaScreenshot PRIVATE Chroma ChromaData juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography)
 endif()
+
+# Backward-compatibility test: every golden state in test/state-fixtures must load
+# correctly in this build (cmake -DCHROMA_STATE_TEST=ON, target ChromaStateTest).
+option(CHROMA_STATE_TEST "Build the saved-state compatibility test" OFF)
+if(CHROMA_STATE_TEST)
+    juce_add_console_app(ChromaStateTest)
+    target_sources(ChromaStateTest PRIVATE ../shared/rba/StateCompatTest.cpp)
+    target_compile_definitions(ChromaStateTest PRIVATE $<TARGET_PROPERTY:Chroma,COMPILE_DEFINITIONS>
+        RBA_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/state-fixtures")
+    target_include_directories(ChromaStateTest PRIVATE $<TARGET_PROPERTY:Chroma,INCLUDE_DIRECTORIES>)
+    target_link_libraries(ChromaStateTest PRIVATE Chroma ChromaData)
+endif()
+

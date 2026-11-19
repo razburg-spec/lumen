@@ -303,8 +303,9 @@ void Activation::reopenBrowser()
         n = nonce;
     }
     if (n.isNotEmpty())
-        juce::URL (activationUrl (RBA_PRODUCT_SLUG, thisMachine(), juce::SystemStats::getComputerName(), n))
-            .launchInDefaultBrowser();
+        // Not juce::URL::launchInDefaultBrowser(): juce::URL re-escapes the #fragment
+        // (activate%3D...), which older site code could not read.
+        juce::Process::openDocument (activationUrl (RBA_PRODUCT_SLUG, thisMachine(), juce::SystemStats::getComputerName(), n), {});
 }
 
 void Activation::cancelWaiting()

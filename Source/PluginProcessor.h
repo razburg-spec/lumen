@@ -37,7 +37,7 @@ public:
 
     // Saved-state format. Bump when a release changes a parameter's ID, range or meaning,
     // and add the matching step to stateMigrations() plus a golden state in test/state-fixtures.
-    static constexpr int stateVersion = 1;
+    static constexpr int stateVersion = 2;
     static const std::vector<rba::state::Migration>& stateMigrations();
 
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "LumenState", createParameterLayout() };

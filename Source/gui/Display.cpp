@@ -112,10 +112,11 @@ void Display::paint (juce::Graphics& g)
         }
 
         auto readouts = header;
-        const auto pitch = [this] (const char* id) { auto v = get (id); return (v > 0 ? "+" : "") + juce::String (v, 1); };
+        const auto pitch = [this] (const char* id) { auto v = juce::roundToInt (get (id)); return (v > 0 ? "+" : "") + juce::String (v); };
         const std::pair<juce::String, juce::Colour> values[] = {
             { "RT60 " + timeLabel (get (revDecay)), isRevOn ? Theme::reverb : Theme::faint },
-            { "PITCH " + pitch (shimPitchA) + " / " + pitch (shimPitchB), isShimOn ? Theme::shimmer : Theme::faint },
+            { "SHIFT " + pitch (shimPitchA) + (std::abs (get (shimPitchB)) < 0.5f ? juce::String() : " / " + pitch (shimPitchB)),
+              isShimOn ? Theme::shimmer : Theme::faint },
             { "ECHO " + delayReadout(), isDelayOn ? Theme::delay : Theme::faint },
         };
         g.setFont (Theme::caps (10.5f, 0.08f));
@@ -138,6 +139,7 @@ void Display::paint (juce::Graphics& g)
     float window = 1.0f;
     if (isRevOn)   window = juce::jmax (window, get (revPreDelay) / 1000.0f + get (revDecay) * 1.05f);
     if (isDelayOn) window = juce::jmax (window, echo * 7.5f);
+    if (isShimOn)  window = juce::jmax (window, get (shimDecay) * 1.05f);
     window = juce::jmin (window, 24.0f);
 
     const auto xFor = [&] (float t) { return plot.getX() + t / window * plot.getWidth(); };
@@ -236,43 +238,48 @@ void Display::paint (juce::Graphics& g)
         }
     }
 
-    // Shimmer grains, riding above the wet signal and climbing with pitch feedback.
+    // Shimmer: a rising cloud. Each band is one more trip round the loop, an interval higher,
+    // fading in later and lasting with the shimmer decay; the Shimmer amount sets how many steps show.
     if (isShimOn)
     {
         juce::Random rng (7);
-        const auto pitchFeedback = get (shimFeedback) / 100.0f;
-        const auto spray = get (shimSpray) / 100.0f;
-        const auto reverse = juce::roundToInt (get (shimReverse));
-        const auto numGrains = 8 + juce::roundToInt (get (shimDensity) * 0.4f);
-        const auto grainWidth = juce::jlimit (4.0f, 70.0f, get (shimGrainMs) / 1000.0f / window * plot.getWidth());
+        const auto amount = get (shimFeedback) / 100.0f;
+        const auto decay = get (shimDecay);
         const auto pxPerSemitone = plot.getHeight() / 110.0f;
+        const float intervals[] = { get (shimPitchA), get (shimPitchB) };
+        const auto steps = 1 + juce::roundToInt (amount * 4.0f);
+        const auto loopSeconds = 0.09f + 0.12f * get (shimSize) / 100.0f;
 
-        for (int i = 0; i < numGrains; ++i)
+        for (int layer = 0; layer < 2; ++layer)
         {
-            int generation = 1;
-            if (rng.nextFloat() < pitchFeedback) ++generation;
-            if (generation == 2 && rng.nextFloat() < pitchFeedback) ++generation;
-
-            const auto t = ((float) i + 0.5f) / (float) numGrains * window * 0.9f
-                         + (rng.nextFloat() - 0.5f) * spray * window * 0.2f;
-            if (t < 0.0f)
+            const auto interval = intervals[layer];
+            if (layer == 1 && std::abs (interval) < 0.5f)
                 continue;
-
-            const auto base = isRevOn ? juce::jmax (-42.0f, reverbLevelAt (t) + get (revLevel) - 3.0f) : -14.0f;
-            const auto db = base + (get (shimLevel) + 6.0f) * 0.5f - (float) (generation - 1) * (1.0f - pitchFeedback) * 14.0f;
-            const auto pitch = get (i % 2 == 0 ? shimPitchA : shimPitchB) * (float) generation;
-            const auto y = yFor (db) - juce::jlimit (-36.0f, 36.0f, pitch) * pxPerSemitone
-                         + (rng.nextFloat() - 0.5f) * spray * plot.getHeight() * 0.25f;
-            const auto x = xFor (t);
-            const bool reversed = reverse == 1 || (reverse == 2 && rng.nextBool());
-            const auto alpha = 1.0f - 0.28f * (float) (generation - 1);
-
-            const auto grain = juce::Rectangle<float> (x, y - 1.75f, grainWidth, 3.5f);
-            const auto bright = Theme::shimmer.withAlpha (alpha);
-            const auto dim = Theme::shimmer.withAlpha (alpha * 0.08f);
-            g.setGradientFill (juce::ColourGradient (reversed ? dim : bright, grain.getX(), y,
-                                                     reversed ? bright : dim, grain.getRight(), y, false));
-            g.fillRoundedRectangle (grain, 1.75f);
+            for (int step = 0; step <= steps; ++step)
+            {
+                const auto start = (float) step * loopSeconds * 2.5f;
+                const auto length = juce::jmin (window - start, decay * (0.6f + 0.4f * amount));
+                if (length <= 0.05f)
+                    continue;
+                const auto stepDb = -6.0f - (float) step * (1.0f - amount) * 9.0f - (layer == 1 ? 4.0f : 0.0f)
+                                  + (get (shimLevel) + 6.0f) * 0.5f;
+                const auto y = yFor (stepDb) - juce::jlimit (-40.0f, 40.0f, interval * (float) step) * pxPerSemitone;
+                const auto x0 = xFor (start), x1 = xFor (start + length);
+                const auto alpha = juce::jlimit (0.08f, 0.9f, 0.85f - 0.14f * (float) step);
+                // Swell in, then fade with the decay.
+                juce::ColourGradient grad (Theme::shimmer.withAlpha (0.0f), x0, y, Theme::shimmer.withAlpha (0.0f), x1, y, false);
+                grad.addColour (0.18, Theme::shimmer.withAlpha (alpha));
+                grad.addColour (0.5, Theme::shimmer.withAlpha (alpha * 0.45f));
+                g.setGradientFill (grad);
+                g.fillRoundedRectangle (juce::Rectangle<float> (x0, y - 1.5f, x1 - x0, 3.0f), 1.5f);
+                for (int sp = 0; sp < 10; ++sp)
+                {
+                    const auto t = start + rng.nextFloat() * length * 0.7f;
+                    const auto sx = xFor (t), sy = y + (rng.nextFloat() - 0.5f) * 10.0f;
+                    g.setColour (Theme::shimmer.withAlpha (alpha * 0.5f * (1.0f - (t - start) / length)));
+                    g.fillEllipse (juce::Rectangle<float> (2.5f, 2.5f).withCentre ({ sx, sy }));
+                }
+            }
         }
     }
 }

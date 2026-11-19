@@ -22,9 +22,10 @@ void Router::attach (juce::AudioProcessorValueTreeState& apvts)
     dModRate = raw (delayModRate); dModDepth = raw (delayModDepth); dDuck = raw (delayDuck);
     dFreeze = raw (delayFreeze); dLevel = raw (delayLevel);
 
-    sPitchA = raw (shimPitchA);  sPitchB = raw (shimPitchB);  sGrain = raw (shimGrainMs);
-    sReverse = raw (shimReverse); sDensity = raw (shimDensity); sSpray = raw (shimSpray);
-    sFb = raw (shimFeedback);    sLevel = raw (shimLevel);
+    sPitchA = raw (shimPitchA);  sPitchB = raw (shimPitchB);  sFb = raw (shimFeedback);
+    sDecay = raw (shimDecay);    sSize = raw (shimSize);      sDiff = raw (shimDiffusion);
+    sMod = raw (shimMod);        sTone = raw (shimTone);      sLowCut = raw (shimLowCut);
+    sVoice = raw (shimVoice);    sLevel = raw (shimLevel);
 
     rMode = raw (revMode);       rColor = raw (revColor);     rPre = raw (revPreDelay);
     rDecay = raw (revDecay);     rSize = raw (revSize);       rDiff = raw (revDiffusion);
@@ -61,12 +62,15 @@ void Router::pullParameters()
 
     ShimmerEngine::Params s;
     s.pitchA = sPitchA.get (12.0f);
-    s.pitchB = sPitchB.get (7.0f);
-    s.grainMs = sGrain.get (120.0f);
-    s.reverse = (int) sReverse.get (0.0f);
-    s.density = sDensity.get (50.0f) / 100.0f;
-    s.spray = sSpray.get (10.0f) / 100.0f;
-    s.feedback = sFb.get (30.0f) / 100.0f;
+    s.pitchB = sPitchB.get (0.0f);
+    s.amount = sFb.get (50.0f) / 100.0f;
+    s.decaySeconds = sDecay.get (6.0f);
+    s.size = sSize.get (70.0f) / 100.0f;
+    s.diffusion = sDiff.get (80.0f) / 100.0f;
+    s.modulation = sMod.get (30.0f) / 100.0f;
+    s.toneHz = sTone.get (7000.0f);
+    s.lowCutHz = sLowCut.get (200.0f);
+    s.voice = (int) sVoice.get (0.0f);
     s.levelGain = dbToGain (sLevel.get (-6.0f));
     shimmer.setParams (s);
 

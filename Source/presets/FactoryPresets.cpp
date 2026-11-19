@@ -29,7 +29,7 @@ namespace
             { "Vocals", "Rap Vocal Room", { REV, c ("revMode", "Room"), c ("revColor", "Now"), v ("revPreDelay", 10), v ("revDecay", 0.7f),
                                             v ("revSize", 35), v ("revLowCut", 350), v ("mix", 14) } },
             { "Vocals", "Ethereal Vocal", { REV, SHM, c ("revMode", "Cloud"), v ("revDecay", 6.0f), v ("revPreDelay", 50), v ("shimPitchA", 12),
-                                            v ("shimPitchB", 0), v ("shimFeedback", 35), v ("shimLevel", -12), v ("mix", 30) } },
+                                            v ("shimPitchB", 0), v ("shimFeedback", 40), v ("shimDecay", 7.0f), v ("shimTone", 6000), v ("shimLevel", -10), v ("mix", 30) } },
             { "Vocals", "60s Chamber Vocal", { REV, c ("revMode", "Chamber"), c ("revColor", "60s"), v ("revPreDelay", 90), v ("revDecay", 2.2f),
                                                v ("revLowCut", 300), v ("mix", 22) } },
 
@@ -53,7 +53,7 @@ namespace
             { "Guitars", "Lead Guitar Echo", { DLY, REV, c ("delayDivision", "1/8D"), v ("delayFeedback", 35), c ("delayChar", "Analog"), v ("delayDuck", 40),
                                                c ("revMode", "Hall"), v ("revDecay", 2.2f), v ("revLevel", -6), v ("mix", 28) } },
             { "Guitars", "Ambient Swells", { REV, SHM, DLY, c ("revMode", "Bloom"), v ("revDecay", 7.0f), v ("revSize", 85), v ("shimPitchA", 12),
-                                             v ("shimPitchB", 7), v ("shimFeedback", 40), c ("delayDivision", "1/4"), v ("delayFeedback", 45),
+                                             v ("shimPitchB", 7), v ("shimFeedback", 45), v ("shimDecay", 9.0f), c ("delayDivision", "1/4"), v ("delayFeedback", 45),
                                              c ("delayMode", "Wide"), v ("mix", 45) } },
             { "Guitars", "Acoustic Room", { REV, c ("revMode", "Chamber"), c ("revColor", "Now"), v ("revPreDelay", 20), v ("revDecay", 1.3f),
                                             v ("revSize", 45), v ("revLowCut", 180), v ("mix", 16) } },
@@ -76,7 +76,7 @@ namespace
 
             // ---------------------------------------------------------------- Synths & Pads
             { "Synths & Pads", "Shimmer Pad", { REV, SHM, c ("revMode", "Hall"), v ("revDecay", 8.0f), v ("revSize", 90), v ("shimPitchA", 12),
-                                                v ("shimPitchB", 24), v ("shimFeedback", 50), v ("shimLevel", -6), v ("coloration", 25), v ("mix", 45) } },
+                                                v ("shimPitchB", 0), v ("shimFeedback", 60), v ("shimDecay", 12.0f), v ("shimSize", 90), v ("shimLevel", -6), v ("coloration", 25), v ("mix", 45) } },
             { "Synths & Pads", "Lush Synth Hall", { REV, c ("revMode", "Hall"), c ("revColor", "90s"), v ("revDecay", 4.0f), v ("revSize", 80),
                                                     v ("revModDepth", 45), v ("mix", 30) } },
             { "Synths & Pads", "Synth Lead Echo", { DLY, REV, c ("delayDivision", "1/8"), c ("delayMode", "Ping-Pong"), v ("delayFeedback", 40),
@@ -84,7 +84,7 @@ namespace
             { "Synths & Pads", "Arp Pulse", { DLY, c ("delayDivision", "1/16"), c ("delayMode", "Ping-Pong"), v ("delayFeedback", 50), c ("delayChar", "Clean"),
                                               v ("delayHighCut", 7000), v ("mix", 30) } },
             { "Synths & Pads", "Octave Cloud", { REV, SHM, c ("revMode", "Cloud"), v ("revDecay", 12.0f), v ("shimPitchA", 12), v ("shimPitchB", -12),
-                                                 v ("shimFeedback", 45), v ("shimGrainMs", 220), v ("mix", 50) } },
+                                                 v ("shimFeedback", 50), v ("shimDecay", 14.0f), v ("shimLowCut", 120), v ("mix", 50) } },
 
             // ---------------------------------------------------------------- Strings & Orchestral
             { "Strings & Orchestral", "Scoring Stage", { REV, c ("revMode", "Hall"), c ("revColor", "Now"), v ("revPreDelay", 35), v ("revDecay", 2.8f),
@@ -95,11 +95,11 @@ namespace
 
             // ---------------------------------------------------------------- Ambient & Sound Design
             { "Ambient & FX", "Infinite Freeze", { DLY, REV, on ("delayFreeze"), c ("revMode", "Cloud"), v ("revDecay", 15.0f), v ("mix", 60) } },
-            { "Ambient & FX", "Reverse Grains", { SHM, REV, c ("shimReverse", "On"), v ("shimGrainMs", 400), v ("shimPitchA", 0), v ("shimPitchB", 12),
-                                                  v ("shimFeedback", 30), c ("revMode", "Bloom"), v ("revDecay", 5.0f), v ("mix", 50) } },
+            { "Ambient & FX", "Reverse Organ", { SHM, REV, c ("shimVoice", "Reverse"), v ("shimPitchA", 12), v ("shimPitchB", -12),
+                                                  v ("shimFeedback", 55), v ("shimDecay", 10.0f), v ("shimTone", 5000), c ("revMode", "Bloom"), v ("revDecay", 5.0f), v ("mix", 50) } },
             { "Ambient & FX", "Lo-Fi Memory", { DLY, REV, c ("delayChar", "Lo-Fi"), c ("delayDivision", "1/4"), v ("delayFeedback", 45), v ("delayModDepth", 40),
                                                 c ("revMode", "Room"), c ("revColor", "70s"), v ("coloration", -60), v ("mix", 40) } },
-            { "Ambient & FX", "Rising Shimmer", { SHM, REV, DLY, v ("shimPitchA", 12), v ("shimPitchB", 19), v ("shimFeedback", 70), c ("revMode", "Cloud"),
+            { "Ambient & FX", "Rising Shimmer", { SHM, REV, DLY, v ("shimPitchA", 12), v ("shimPitchB", 19), v ("shimFeedback", 80), v ("shimDecay", 18.0f), v ("shimTone", 9000), c ("revMode", "Cloud"),
                                                   v ("revDecay", 10.0f), v ("crossFeed", 30), c ("delayDivision", "1/2"), v ("delayFeedback", 40), v ("mix", 55) } },
             { "Ambient & FX", "Runaway Dub", { DLY, REV, c ("delayChar", "Tape"), c ("delayDivision", "1/4D"), v ("delayFeedback", 100), v ("delayDrive", 40),
                                                v ("delayHighCut", 3000), c ("revMode", "Plate"), v ("revLevel", -8), v ("mix", 40) } },

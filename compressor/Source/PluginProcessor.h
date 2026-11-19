@@ -1,8 +1,9 @@
 #pragma once
+#include <rba/StateIO.h>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Parameters.h"
 #include "dsp/ChromaEngine.h"
-#include "licensing/LicenseManager.h"
+#include <rba/Activation.h>
 #include "ParamHistory.h"
 
 class ChromaProcessor : public juce::AudioProcessor
@@ -33,10 +34,15 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    // Saved-state format. Bump when a release changes a parameter's ID, range or meaning,
+    // and add the matching step to stateMigrations() plus a golden state in test/state-fixtures.
+    static constexpr int stateVersion = 1;
+    static const std::vector<rba::state::Migration>& stateMigrations();
+
     juce::AudioProcessorValueTreeState apvts { *this, nullptr, "ChromaState", createParameterLayout() };
     ParamHistory history { *this };   // undo / redo of the user's edits (lives here so it survives closing the window)
 
-    juce::SharedResourcePointer<LicenseManager> licence;
+    juce::SharedResourcePointer<rba::Activation> licence;
 
     ChromaEngine::Meters& meters() { return engine.meters; }
     bool hasSidechainInput() const;
@@ -52,7 +58,7 @@ private:
                        *softClip, *parallel, *keyOn, *keySource, *keyFreq, *keyListen;
 
     // Evaluation gaps: while unlicensed the effect drops out for a moment every 40 s.
-    const juce::uint32 expectedGrant = LicenseManager::grantFor (LicenseManager::thisMachine());
+    const juce::uint32 expectedGrant = rba::Activation::grantFor (rba::Activation::thisMachine());
     juce::int64 evaluationClock = 0;
     int gapPeriod = 0, gapLength = 0;
 

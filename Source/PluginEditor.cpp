@@ -9,6 +9,14 @@ namespace
     constexpr int gap = 14;
     constexpr int masterWidth = 160;
     const juce::Identifier advancedProperty { "advancedView" };
+
+    rba::ActivationStyle activationStyle (juce::Colour warning)
+    {
+        rba::ActivationStyle s { Theme::bg, Theme::surface, Theme::raised, Theme::line, Theme::text, Theme::muted, Theme::faint,
+                                 Theme::brandBlue, Theme::brandTop, Theme::brandBottom, Theme::brandCyan, warning, {} };
+        s.drawLogo = [] (juce::Graphics& g, juce::Rectangle<float> area) { drawBrandMark (g, area); };
+        return s;
+    }
 }
 
 //==============================================================================
@@ -18,6 +26,7 @@ LumenView::LumenView (LumenProcessor& p)
       delay (p.apvts), shimmer (p.apvts), reverb (p.apvts), master (p.apvts),
       routing (*p.apvts.getParameter (ParamID::routing), { "Serial", "Parallel", juce::String::fromUTF8 ("Reverb \xe2\x80\xba Delay") }, Theme::brandBlue),
       licence (*p.licence),
+      licenceBadge (*p.licence, activationStyle (Theme::delay)),
       presets (p.apvts, p.history)
 {
     for (auto* c : std::initializer_list<juce::Component*> { &presets, &undoButton, &redoButton, &resetButton, &helpButton })
@@ -30,6 +39,8 @@ LumenView::LumenView (LumenProcessor& p)
     redoButton.onClick = [this] { processor.history.redo(); };
     resetButton.onClick = [this] { presets.resetAll(); };
     helpButton.onClick = [this] { showManual (manual == nullptr); };
+    addChildComponent (update);
+    update.onVisibilityChanged = [this] { resized(); repaint(); };
     processor.history.addChangeListener (this);
     updateHistoryButtons();
 
@@ -43,34 +54,23 @@ LumenView::LumenView (LumenProcessor& p)
     advancedToggle.setToggleState (startAdvanced, juce::dontSendNotification);
     setAdvanced (startAdvanced);
 
-    if (LicenseConfig::builtIn)
-    {
-        addAndMakeVisible (licenceBadge);
-        licenceBadge.onClick = [this] { showActivation (true); };
-        licence.addChangeListener (this);
-        changeListenerCallback (nullptr);
+    addAndMakeVisible (licenceBadge);
+    licenceBadge.onClick = [this] { showActivation (true); };
 
-        // Ask straight away whenever Lumen is not free to run.
-        const auto state = licence.getStatus().state;
-        if (state != LicenseManager::State::licensed && state != LicenseManager::State::trial)
-            showActivation (true);
-    }
+    // Ask straight away whenever Lumen is not activated on this computer.
+    if (! licence.isActivated())
+        showActivation (true);
 }
 
 LumenView::~LumenView()
 {
     processor.history.removeChangeListener (this);
-    licence.removeChangeListener (this);
 }
 
 void LumenView::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
     if (source == &processor.history)
-    {
         updateHistoryButtons();
-        return;
-    }
-    licenceBadge.setStatus (licence.getStatus());
 }
 
 void LumenView::updateHistoryButtons()
@@ -105,7 +105,7 @@ void LumenView::showActivation (bool show)
         return;
     }
 
-    activation = std::make_unique<ActivationPanel> (licence);
+    activation = std::make_unique<rba::ActivationPanel> (licence, activationStyle (Theme::delay));
     activation->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LumenView> (this)]
                                                                      { if (safe != nullptr) safe->showActivation (false); }); };
     addAndMakeVisible (*activation);
@@ -172,8 +172,9 @@ void LumenView::paint (juce::Graphics& g)
    #else
     const auto fineHint = juce::String::fromUTF8 ("Double-click resets  \xc2\xb7  Ctrl-drag for fine control");
    #endif
-    g.drawText (fineHint,
-                footer, juce::Justification::centredRight, false);
+    if (! update.isVisible())   // the update pill takes this spot when shown
+        g.drawText (fineHint,
+                    footer, juce::Justification::centredRight, false);
 }
 
 void LumenView::resized()
@@ -181,13 +182,15 @@ void LumenView::resized()
     auto r = getLocalBounds();
     auto header = r.removeFromTop (headerHeight).reduced (margin, 0);
     auto toolbar = r.removeFromTop (toolbarHeight).reduced (margin, 0).withTrimmedBottom (10);
-    r.removeFromBottom (footerHeight);
+    {
+        const auto footer = r.removeFromBottom (footerHeight).reduced (margin, 0);
+        update.setBounds (footer.withLeft (footer.getRight() - update.getIdealWidth()).withSizeKeepingCentre (update.getIdealWidth(), 24));
+    }
     r = r.reduced (margin, 0);
 
     advancedToggle.setBounds (header.removeFromRight (112).withSizeKeepingCentre (112, 28));
     header.removeFromRight (10);
-    if (LicenseConfig::builtIn)
-        licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
+    licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
     if (activation != nullptr)
         activation->setBounds (getLocalBounds());
     if (manual != nullptr)

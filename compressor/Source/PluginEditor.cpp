@@ -8,6 +8,14 @@ namespace
     constexpr int footerHeight = 30;
     constexpr int gap = 14;
     constexpr int titleHeight = 40;
+
+    rba::ActivationStyle activationStyle (juce::Colour warning)
+    {
+        rba::ActivationStyle s { Theme::bg, Theme::surface, Theme::raised, Theme::line, Theme::text, Theme::muted, Theme::faint,
+                                 Theme::brandBlue, Theme::brandTop, Theme::brandBottom, Theme::brandCyan, warning, {} };
+        s.drawLogo = [] (juce::Graphics& g, juce::Rectangle<float> area) { drawBrandMark (g, area); };
+        return s;
+    }
 }
 
 //==============================================================================
@@ -19,12 +27,13 @@ ChromaView::ChromaView (ChromaProcessor& p)
       attack     (p.apvts, ParamID::attack,     "Attack",     Theme::characterColour (0)),
       release    (p.apvts, ParamID::release,    "Release",    Theme::characterColour (0)),
       ratio      (p.apvts, ParamID::ratio,      "Ratio",      Theme::characterColour (0)),
-      saturation (p.apvts, ParamID::saturation, "Saturation", Theme::characterColour (0)),
-      parallel   (p.apvts, ParamID::parallel,   "Parallel",   Theme::characterColour (0)),
+      saturation (p.apvts, ParamID::saturation, "Amount", Theme::characterColour (0)),
+      parallel   (p.apvts, ParamID::parallel,   "Mix",   Theme::characterColour (0)),
       keyFreq    (p.apvts, ParamID::keyFreq,    "Freq",       Theme::key),
       keyPowerAttachment (p.apvts, ParamID::keyOn, keyPower),
       keySource (*p.apvts.getParameter (ParamID::keySource), { "External", "Freq Key" }, Theme::key),
       licence (*p.licence),
+      licenceBadge (*p.licence, activationStyle (Theme::characterColour (0))),
       presets (p.apvts, p.history)
 {
     for (auto* c : std::initializer_list<juce::Component*> { &dial, &grMeter, &inMeter, &outMeter, &input, &output, &attack, &release,
@@ -39,8 +48,8 @@ ChromaView::ChromaView (ChromaProcessor& p)
     attack.slider.setTooltip ("How fast the compressor grabs");
     release.slider.setTooltip ("How fast it lets go");
     ratio.slider.setTooltip ("How hard it compresses. 1:1 = no compression");
-    saturation.slider.setTooltip ("Harmonic saturation in the voice of the selected character");
-    parallel.slider.setTooltip ("Blend of the untouched source (0%) and the processed signal (100%)");
+    saturation.slider.setTooltip ("Harmonic saturation in the voice of the selected character. Works on the whole output, at any Parallel setting");
+    parallel.slider.setTooltip ("Blend of the untouched source (0%) and the compressed signal (100%). Does not change the Saturation");
     keyFreq.slider.setTooltip ("Freq Key: the band (50 Hz - 16 kHz) that triggers the compressor");
     keyPower.setTooltip ("Key: trigger the compressor from the sidechain or from one frequency band");
     softClip->setTooltip ("Soft clipper on the output: rounds off peaks above about -4 dBFS");
@@ -60,26 +69,22 @@ ChromaView::ChromaView (ChromaProcessor& p)
     redoButton.onClick = [this] { processor.history.redo(); };
     resetButton.onClick = [this] { presets.resetAll(); };
     helpButton.onClick = [this] { showManual (manual == nullptr); };
+    addChildComponent (update);
+    update.onVisibilityChanged = [this] { resized(); repaint(); };
     processor.history.addChangeListener (this);
     updateHistoryButtons();
 
-    if (LicenseConfig::builtIn)
-    {
-        addAndMakeVisible (licenceBadge);
-        licenceBadge.onClick = [this] { showActivation (true); };
-        licence.addChangeListener (this);
-        changeListenerCallback (nullptr);
+    addAndMakeVisible (licenceBadge);
+    licenceBadge.onClick = [this] { showActivation (true); };
 
-        const auto licenceState = licence.getStatus().state;
-        if (licenceState != LicenseManager::State::licensed && licenceState != LicenseManager::State::trial)
-            showActivation (true);
-    }
+    // Ask straight away whenever Chroma is not activated on this computer.
+    if (! licence.isActivated())
+        showActivation (true);
 }
 
 ChromaView::~ChromaView()
 {
     processor.history.removeChangeListener (this);
-    licence.removeChangeListener (this);
 }
 
 PillToggle& ChromaView::addPill (const char* paramID, const juce::String& text, juce::Colour accent)
@@ -106,11 +111,7 @@ void ChromaView::applyCharacterColour (int character)
 void ChromaView::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
     if (source == &processor.history)
-    {
         updateHistoryButtons();
-        return;
-    }
-    licenceBadge.setStatus (licence.getStatus());
 }
 
 void ChromaView::updateHistoryButtons()
@@ -143,7 +144,7 @@ void ChromaView::showActivation (bool show)
         activation.reset();
         return;
     }
-    activation = std::make_unique<ActivationPanel> (licence);
+    activation = std::make_unique<rba::ActivationPanel> (licence, activationStyle (Theme::characterColour (0)));
     activation->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<ChromaView> (this)]
                                                                      { if (safe != nullptr) safe->showActivation (false); }); };
     addAndMakeVisible (*activation);
@@ -247,7 +248,8 @@ void ChromaView::paint (juce::Graphics& g)
     card (outputCard, accent, "OUTPUT", {}, true);
     card (centreCard, accent, "CHARACTER", "TURN THE KNOB TO CHANGE THE VOICE", true);
     card (dynamicsCard, accent, "DYNAMICS", "ATTACK  RELEASE  RATIO", true);
-    card (colourCard, accent, "COLOR", "SATURATION  PARALLEL", true);
+    card (saturationCard, accent, "SATURATION", {}, true);
+    card (parallelCard, accent, "PARALLEL", {}, true);
     card (keyCard, Theme::key, "KEY", "SIDECHAIN", keyOn);
 
     // Footer.
@@ -262,7 +264,8 @@ void ChromaView::paint (juce::Graphics& g)
    #else
     const auto fineHint = juce::String::fromUTF8 ("Double-click resets  \xc2\xb7  Ctrl-drag for fine control");
    #endif
-    g.drawText (fineHint, footer, juce::Justification::centredRight, false);
+    if (! update.isVisible())   // the update pill takes this spot when shown
+        g.drawText (fineHint, footer, juce::Justification::centredRight, false);
 }
 
 void ChromaView::resized()
@@ -270,11 +273,13 @@ void ChromaView::resized()
     auto r = getLocalBounds();
     auto header = r.removeFromTop (headerHeight).reduced (margin, 0);
     auto toolbar = r.removeFromTop (toolbarHeight).reduced (margin, 0).withTrimmedBottom (10);
-    r.removeFromBottom (footerHeight);
+    {
+        const auto footer = r.removeFromBottom (footerHeight).reduced (margin, 0);
+        update.setBounds (footer.withLeft (footer.getRight() - update.getIdealWidth()).withSizeKeepingCentre (update.getIdealWidth(), 24));
+    }
     r = r.reduced (margin, 0);
 
-    if (LicenseConfig::builtIn)
-        licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
+    licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
     if (activation != nullptr) activation->setBounds (getLocalBounds());
     if (manual != nullptr)     manual->setBounds (getLocalBounds());
 
@@ -313,11 +318,13 @@ void ChromaView::resized()
     centre.removeFromLeft (8);
     dial.setBounds (centre);
 
-    // Bottom row: Dynamics | Color | Key
+    // Bottom row: Dynamics | Saturation | Parallel | Key (Saturation and Parallel are separate stages)
     auto bottom = r;
-    dynamicsCard = bottom.removeFromLeft (400);
+    dynamicsCard = bottom.removeFromLeft (370);
     bottom.removeFromLeft (gap);
-    colourCard = bottom.removeFromLeft (270);
+    saturationCard = bottom.removeFromLeft (150);
+    bottom.removeFromLeft (gap);
+    parallelCard = bottom.removeFromLeft (150);
     bottom.removeFromLeft (gap);
     keyCard = bottom;
 
@@ -329,7 +336,8 @@ void ChromaView::resized()
             k->setBounds (a.removeFromLeft (w).reduced (4, 0));
     };
     knobRow (dynamicsCard, { &attack, &release, &ratio });
-    knobRow (colourCard, { &saturation, &parallel });
+    knobRow (saturationCard, { &saturation });
+    knobRow (parallelCard, { &parallel });
 
     keyPower.setBounds (keyCard.getRight() - 16 - 28, keyCard.getY() + 12, 28, 28);
     auto k = keyCard.reduced (14, 0).withTrimmedTop (titleHeight + 2).withTrimmedBottom (16);

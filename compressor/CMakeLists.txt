@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 
-project(Chroma VERSION 0.1.2 LANGUAGES C CXX)
+project(Chroma VERSION 0.1.5 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,7 +31,12 @@ if(APPLE OR WIN32)
 endif()
 message(STATUS "Chroma formats: ${CHROMA_FORMATS}")
 
+# CFBundleVersion: give every release build a unique value (e.g. -DRBA_BUILD_VERSION=1.2.3.202611181930)
+# so hosts that cache plug-ins by version rescan after an update.
+set(RBA_BUILD_VERSION "${PROJECT_VERSION}" CACHE STRING "CFBundleVersion of the built bundles")
+
 juce_add_plugin(Chroma
+    BUILD_VERSION "${RBA_BUILD_VERSION}"
     COMPANY_NAME "Raz Burg AudioCrafts"
     BUNDLE_ID "com.razburgaudiocrafts.chroma"
     PLUGIN_MANUFACTURER_CODE Rzau
@@ -55,16 +60,19 @@ target_sources(Chroma PRIVATE
     Source/gui/RbaLookAndFeel.cpp
     Source/gui/Widgets.cpp
     Source/gui/ChromaWidgets.cpp
-    Source/gui/ActivationPanel.cpp
     Source/gui/Toolbar.cpp
     Source/presets/FactoryPresets.cpp
-    Source/licensing/LemonSqueezyBackend.cpp
-    Source/licensing/LicenseManager.cpp)
+    ../shared/rba/UpdateChecker.cpp
+    ../shared/rba/UpdateBanner.cpp
+    ../shared/rba/Activation.cpp
+    ../shared/rba/ActivationPanel.cpp)
+target_include_directories(Chroma PRIVATE ../shared)
 
 # The built-in user guide (also published on the website).
 juce_add_binary_data(ChromaData SOURCES Resources/Manual.md)
 
 target_compile_definitions(Chroma PUBLIC
+    RBA_PRODUCT_SLUG=\"chroma\"
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -83,3 +91,16 @@ if(CHROMA_SCREENSHOT_TOOL)
     target_include_directories(ChromaScreenshot PRIVATE $<TARGET_PROPERTY:Chroma,INCLUDE_DIRECTORIES>)
     target_link_libraries(ChromaScreenshot PRIVATE Chroma ChromaData juce::juce_audio_utils juce::juce_dsp juce::juce_cryptography)
 endif()
+
+# Backward-compatibility test: every golden state in test/state-fixtures must load
+# correctly in this build (cmake -DCHROMA_STATE_TEST=ON, target ChromaStateTest).
+option(CHROMA_STATE_TEST "Build the saved-state compatibility test" OFF)
+if(CHROMA_STATE_TEST)
+    juce_add_console_app(ChromaStateTest)
+    target_sources(ChromaStateTest PRIVATE ../shared/rba/StateCompatTest.cpp)
+    target_compile_definitions(ChromaStateTest PRIVATE $<TARGET_PROPERTY:Chroma,COMPILE_DEFINITIONS>
+        RBA_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/state-fixtures")
+    target_include_directories(ChromaStateTest PRIVATE $<TARGET_PROPERTY:Chroma,INCLUDE_DIRECTORIES>)
+    target_link_libraries(ChromaStateTest PRIVATE Chroma ChromaData)
+endif()
+

@@ -4,8 +4,9 @@
 #include "gui/LumenLookAndFeel.h"
 #include "gui/Display.h"
 #include "gui/Sections.h"
-#include "gui/ActivationPanel.h"
+#include <rba/ActivationPanel.h>
 #include "gui/Toolbar.h"
+#include <rba/UpdateBanner.h>
 
 // The whole interface, laid out at a fixed design size. The editor scales it as a
 // unit, so everything stays vector-sharp at any window size.
@@ -39,14 +40,18 @@ private:
     PillToggle advancedToggle { "Advanced", Theme::brandBlue };
     bool advanced = false;
 
-    LicenseManager& licence;
-    LicenceBadge licenceBadge;
-    std::unique_ptr<ActivationPanel> activation;
+    rba::Activation& licence;
+    rba::ActivationBadge licenceBadge;
+    std::unique_ptr<rba::ActivationPanel> activation;
 
     PresetBar presets;
     ToolButton undoButton { "Undo", ToolButton::Glyph::undo }, redoButton { "Redo", ToolButton::Glyph::redo },
                resetButton { "Reset" }, helpButton { "User guide", ToolButton::Glyph::help };
     std::unique_ptr<ManualPanel> manual;
+
+    // Small "new version available" pill in the footer (hidden unless there is one).
+    rba::UpdateBanner update { "Lumen", "lumen", JucePlugin_VersionString,
+                               { Theme::surface, Theme::line, Theme::text, Theme::muted, Theme::brandBlue } };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LumenView)
 };

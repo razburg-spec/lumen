@@ -1,14 +1,21 @@
 // Renders the Chroma interface to image files, for the website and for checking the layout.
-// Usage: ChromaScreenshot <out-dir> [character 0-5]
+// Usage: ChromaScreenshot <out-dir> [character 0-5] [update|activate]
+// "update" shows the new-version notice as if the website had a newer release.
+// "activate" keeps the activation window that a not-yet-activated computer sees.
 #include "../Source/PluginProcessor.h"
 #include "../Source/PluginEditor.h"
-#include "../Source/gui/ActivationPanel.h"
+#include <rba/ActivationPanel.h>
+#include <rba/UpdateChecker.h>
+
+static bool keepActivation = false;
 
 static void hideOverlays (juce::Component& c)
 {
+    if (keepActivation)
+        return;
     for (auto* child : c.getChildren())
     {
-        if (dynamic_cast<ActivationPanel*> (child) != nullptr)
+        if (dynamic_cast<rba::ActivationPanel*> (child) != nullptr)
             child->setVisible (false);
         hideOverlays (*child);
     }
@@ -26,6 +33,7 @@ int main (int argc, char** argv)
     const juce::File outDir (argc > 1 ? juce::String (argv[1]) : juce::File::getCurrentWorkingDirectory().getFullPathName());
     const int character = argc > 2 ? juce::String (argv[2]).getIntValue() : 0;
     outDir.createDirectory();
+    keepActivation = argc > 3 && juce::String (argv[3]) == "activate";
 
     std::unique_ptr<ChromaProcessor> proc (dynamic_cast<ChromaProcessor*> (createPluginFilter()));
     set (*proc, ParamID::character, (float) character);
@@ -67,6 +75,18 @@ int main (int argc, char** argv)
             view->poll();
     }
 
+    const bool showUpdate = argc > 3 && juce::String (argv[3]) == "update";
+    if (showUpdate)
+    {
+        rba::UpdateChecker::Result r;
+        r.checked = r.updateAvailable = true;
+        r.latestVersion = "0.2.0";
+        r.downloadUrl = rba::UpdateChecker::defaultDownloadUrl;
+        auto* checker = rba::UpdateChecker::getInstance();
+        checker->setResultForTesting (r);
+        checker->dispatchPendingMessages();
+    }
+
     auto save = [&] (const juce::String& name, float scale, bool jpeg)
     {
         auto img = editor->createComponentSnapshot (editor->getLocalBounds(), true, scale);
@@ -77,8 +97,9 @@ int main (int argc, char** argv)
         else      { juce::PNGImageFormat f; f.writeImageToStream (img, os); }
         std::printf ("wrote %s (%d x %d)\n", file.getFullPathName().toRawUTF8(), img.getWidth(), img.getHeight());
     };
-    save ("chroma-" + juce::String (character) + ".png", 2.0f, false);
-    save ("chroma-" + juce::String (character) + "-1400.jpg", 1400.0f / (float) ChromaView::designWidth, true);
+    const auto suffix = juce::String (character) + (showUpdate ? "-update" : keepActivation ? "-activate" : "");
+    save ("chroma-" + suffix + ".png", 2.0f, false);
+    save ("chroma-" + suffix + "-1400.jpg", 1400.0f / (float) ChromaView::designWidth, true);
     editor.reset();
     return 0;
 }

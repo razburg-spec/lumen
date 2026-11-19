@@ -27,10 +27,10 @@ void ChromaEngine::prepare (double sampleRate, int maxBlockSize, int numChannels
     channels = juce::jlimit (1, 2, numChannels);
     maxBlock = juce::jmax (16, maxBlockSize);
 
-    for (auto* b : { &dry, &wet, &detector, &residue, &shifted })
+    for (auto* b : { &dry, &wet, &detector, &residue })
         b->setSize (2, maxBlock, false, true, true);
 
-    for (auto* os : { &satOversampler, &dryOversampler, &clipOversampler })
+    for (auto* os : { &satOversampler, &clipOversampler })
     {
         *os = std::make_unique<juce::dsp::Oversampling<float>> ((size_t) channels, 1,
                   juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false);
@@ -52,7 +52,7 @@ void ChromaEngine::reset()
     for (auto& f : keyFilter) f.reset();
     for (auto& f : toneLow) f.reset();
     for (auto& f : toneHigh) f.reset();
-    for (auto* os : { satOversampler.get(), dryOversampler.get(), clipOversampler.get() })
+    for (auto* os : { satOversampler.get(), clipOversampler.get() })
         if (os != nullptr) os->reset();
     satPath.setCurrentAndTargetValue (0.0f);
     clipPath.setCurrentAndTargetValue (0.0f);
@@ -223,13 +223,8 @@ void ChromaEngine::processChunk (juce::AudioBuffer<float>& main, const juce::Aud
         maxGr = juce::jmax (maxGr, gr);
     }
 
-    // Saturation on the compressed signal.
-    if (satAmount.isSmoothing() || satAmount.getTargetValue() > 0.0f || satPath.getCurrentValue() > 0.0f)
-        saturate (wet, dry, n, c, numCh, maxGr);
-    else
-        satAmount.skip (n);
-
-    // Make-up, then the parallel blend with the untouched source.
+    // Make-up, then the parallel blend with the untouched source. Parallel only decides how much of
+    // the compressor you hear; it has nothing to do with Saturation.
     for (int i = 0; i < n; ++i)
     {
         const float og = outputGain.getNextValue();
@@ -237,6 +232,12 @@ void ChromaEngine::processChunk (juce::AudioBuffer<float>& main, const juce::Aud
         for (int ch = 0; ch < numCh; ++ch)
             main.setSample (ch, i, dry.getSample (ch, i) * (1.0f - mix) + wet.getSample (ch, i) * og * mix);
     }
+
+    // Saturation colours the whole blended signal, so its amount is the same at any Parallel setting.
+    if (satAmount.isSmoothing() || satAmount.getTargetValue() > 0.0f || satPath.getCurrentValue() > 0.0f)
+        saturate (main, n, c, numCh, maxGr);
+    else
+        satAmount.skip (n);
 
     softClipBlock (main, n, p.softClip);
 
@@ -253,18 +254,16 @@ void ChromaEngine::processChunk (juce::AudioBuffer<float>& main, const juce::Aud
     meters.gainReductionDb.store (juce::jmax (maxGr, meters.gainReductionDb.load (std::memory_order_relaxed)), std::memory_order_relaxed);
 }
 
-void ChromaEngine::saturate (juce::AudioBuffer<float>& signal, juce::AudioBuffer<float>& source, int n,
-                             const Character& c, int numCh, float grDb)
+void ChromaEngine::saturate (juce::AudioBuffer<float>& signal, int n, const Character& c, int numCh, float grDb)
 {
-    // The saturator runs at 2x so the new harmonics don't fold back. The 2x filters shift the phase a
-    // little, so the untouched source for the Parallel blend goes through an identical (unshaped) pass
-    // and both stay aligned. Switching the stage in and out cross-fades between the two paths.
+    // The saturator runs at 2x so the new harmonics don't fold back. It works on the signal after the
+    // Parallel blend, so source and compressed signal pass through the same filters and stay aligned.
+    // Switching the stage in and out cross-fades between the plain and the saturated signal.
     const float pathStart = satPath.getCurrentValue();
     satPath.setTargetValue (satAmount.getTargetValue() > 0.0f ? 1.0f : 0.0f);
     if (pathStart <= 0.0f)
     {
         satOversampler->reset();
-        dryOversampler->reset();
         for (auto& f : toneLow) f.reset();
         for (auto& f : toneHigh) f.reset();
     }
@@ -275,10 +274,7 @@ void ChromaEngine::saturate (juce::AudioBuffer<float>& signal, juce::AudioBuffer
     const float driveEnd = 1.0f + (c.drive - 1.0f) * amountEnd + c.grDrive * grDb * amountEnd;
 
     for (int ch = 0; ch < channels; ++ch)
-    {
         residue.copyFrom (ch, 0, signal, juce::jmin (ch, numCh - 1), 0, n);
-        shifted.copyFrom (ch, 0, source, juce::jmin (ch, numCh - 1), 0, n);
-    }
 
     auto block = juce::dsp::AudioBlock<float> (residue).getSubsetChannelBlock (0, (size_t) channels).getSubBlock (0, (size_t) n);
     auto up = satOversampler->processSamplesUp (block);
@@ -299,10 +295,6 @@ void ChromaEngine::saturate (juce::AudioBuffer<float>& signal, juce::AudioBuffer
     satOversampler->processSamplesDown (block);
     lastDrive = driveEnd;
 
-    auto dryBlock = juce::dsp::AudioBlock<float> (shifted).getSubsetChannelBlock (0, (size_t) channels).getSubBlock (0, (size_t) n);
-    dryOversampler->processSamplesUp (dryBlock);
-    dryOversampler->processSamplesDown (dryBlock);
-
     for (int i = 0; i < n; ++i)
     {
         const float m = satPath.getNextValue();
@@ -310,7 +302,6 @@ void ChromaEngine::saturate (juce::AudioBuffer<float>& signal, juce::AudioBuffer
         {
             const int src = juce::jmin (ch, channels - 1);
             signal.setSample (ch, i, signal.getSample (ch, i) * (1.0f - m) + residue.getSample (src, i) * m);
-            source.setSample (ch, i, source.getSample (ch, i) * (1.0f - m) + shifted.getSample (src, i) * m);
         }
     }
 }

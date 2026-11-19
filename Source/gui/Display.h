@@ -2,7 +2,7 @@
 #include "Widgets.h"
 
 // The large display: one time axis showing the dry hit, the delay taps, the shimmer
-// grains and the reverb envelope, each in its engine colour. Drawn from the current
+// shimmer climb and the reverb envelope, each in its engine colour. Drawn from the current
 // parameter values, so it answers every knob move immediately.
 class Display : public juce::Component
 {

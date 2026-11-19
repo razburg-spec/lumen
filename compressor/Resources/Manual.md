@@ -27,8 +27,8 @@ Chroma is a compressor with six characters by Raz Burg AudioCrafts. One knob cha
 - Attack: how fast the compressor grabs (0.05 ms to 200 ms). Each character has its own fastest attack.
 - Release: how fast it lets go (20 ms to 3 s).
 - Ratio: how hard it compresses, from 1:1 (no compression) to 20:1.
-- Saturation: harmonic saturation in the voice of the current character. At 0% it is off.
-- Parallel: blends the untouched source (0%) with the processed signal (100%) for parallel compression.
+- Saturation (Amount): harmonic saturation in the voice of the current character. At 0% it is off. It colors the whole output after the Parallel blend, so it sounds the same at any Parallel setting.
+- Parallel (Mix): blends the untouched source (0%) with the compressed signal (100%) for parallel compression. It only sets how much compression you hear and does not change the Saturation.
 - Soft Clip: a soft clipper on the final output that rounds off peaks above about -4 dBFS and keeps them below 0 dBFS.
 
 ## Key (sidechain)
@@ -52,4 +52,11 @@ Chroma is a compressor with six characters by Raz Burg AudioCrafts. One knob cha
 
 ## Licence
 
-- Chroma is free. It is protected with iLok: sign in with your free iLok account and activate it on up to two computers. To move it to another computer, deactivate it in iLok License Manager first.
+- Chroma is free. Get it from My plugins at audiocrafts.razburg.com, with your free site account.
+- The first time you open Chroma, click Activate in browser. Your browser opens My plugins: sign in and click Activate there, and Chroma unlocks by itself a few seconds later. No licence key, no iLok.
+- Each account can activate Chroma on up to two computers. To move it, click the ACTIVATED badge and choose Deactivate this computer, or remove the computer in My plugins.
+- Chroma checks its activation online about once a week. Offline is fine for up to 60 days. Until Chroma is activated, the effect drops out for a moment every 40 seconds.
+
+## Updates
+
+When you open Chroma, it quietly checks audiocrafts.razburg.com for a newer version. If there is one, a small notice appears at the bottom right of the window. Click Download to open My plugins in your browser, or click the x to hide the notice until the next release. The check never affects the sound, and nothing appears when you are offline.

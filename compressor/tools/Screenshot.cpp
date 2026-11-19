@@ -1,8 +1,10 @@
 // Renders the Chroma interface to image files, for the website and for checking the layout.
-// Usage: ChromaScreenshot <out-dir> [character 0-5]
+// Usage: ChromaScreenshot <out-dir> [character 0-5] [update]
+// "update" shows the new-version notice as if the website had a newer release.
 #include "../Source/PluginProcessor.h"
 #include "../Source/PluginEditor.h"
 #include "../Source/gui/ActivationPanel.h"
+#include <rba/UpdateChecker.h>
 
 static void hideOverlays (juce::Component& c)
 {
@@ -67,6 +69,18 @@ int main (int argc, char** argv)
             view->poll();
     }
 
+    const bool showUpdate = argc > 3 && juce::String (argv[3]) == "update";
+    if (showUpdate)
+    {
+        rba::UpdateChecker::Result r;
+        r.checked = r.updateAvailable = true;
+        r.latestVersion = "0.2.0";
+        r.downloadUrl = rba::UpdateChecker::defaultDownloadUrl;
+        auto* checker = rba::UpdateChecker::getInstance();
+        checker->setResultForTesting (r);
+        checker->dispatchPendingMessages();
+    }
+
     auto save = [&] (const juce::String& name, float scale, bool jpeg)
     {
         auto img = editor->createComponentSnapshot (editor->getLocalBounds(), true, scale);
@@ -77,8 +91,9 @@ int main (int argc, char** argv)
         else      { juce::PNGImageFormat f; f.writeImageToStream (img, os); }
         std::printf ("wrote %s (%d x %d)\n", file.getFullPathName().toRawUTF8(), img.getWidth(), img.getHeight());
     };
-    save ("chroma-" + juce::String (character) + ".png", 2.0f, false);
-    save ("chroma-" + juce::String (character) + "-1400.jpg", 1400.0f / (float) ChromaView::designWidth, true);
+    const auto suffix = juce::String (character) + (showUpdate ? "-update" : "");
+    save ("chroma-" + suffix + ".png", 2.0f, false);
+    save ("chroma-" + suffix + "-1400.jpg", 1400.0f / (float) ChromaView::designWidth, true);
     editor.reset();
     return 0;
 }

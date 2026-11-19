@@ -74,6 +74,7 @@ jobs:
         with:
           name: Lumen-Windows
           path: out/
+          retention-days: 7
 
       # A manual run publishes the installer (VST3 only, unsigned) and the raw, not yet PACE-wrapped AAX
       # as a pre-release, so they can be downloaded without an Actions login.

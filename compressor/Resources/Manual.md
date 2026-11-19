@@ -53,3 +53,7 @@ Chroma is a compressor with six characters by Raz Burg AudioCrafts. One knob cha
 ## Licence
 
 - Chroma is free. It is protected with iLok: sign in with your free iLok account and activate it on up to two computers. To move it to another computer, deactivate it in iLok License Manager first.
+
+## Updates
+
+When you open Chroma, it quietly checks audiocrafts.razburg.com for a newer version. If there is one, a small notice appears at the bottom right of the window. Click Download to open My plugins in your browser, or click the x to hide the notice until the next release. The check never affects the sound, and nothing appears when you are offline.

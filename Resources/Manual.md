@@ -108,7 +108,9 @@ An algorithmic reverb: six types of space, each available in five eras.
 ## Licence
 
 - Lumen is free. Get it from My plugins at audiocrafts.razburg.com, with your free site account.
-- Lumen is protected with iLok: redeem the iLok code from My plugins in iLok License Manager with your free iLok account, and activate Lumen on up to two computers. To move it to another computer, deactivate it in iLok License Manager first.
+- The first time you open Lumen, click Activate in browser. Your browser opens My plugins: sign in and click Activate there, and Lumen unlocks by itself a few seconds later. No licence key, no iLok.
+- Each account can activate Lumen on up to two computers. To move it, click the ACTIVATED badge and choose Deactivate this computer, or remove the computer in My plugins.
+- Lumen checks its activation online about once a week. Offline is fine for up to 60 days. Until Lumen is activated, the effect drops out for a moment every 40 seconds.
 
 ## Updates
 

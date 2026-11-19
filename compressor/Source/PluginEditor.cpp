@@ -8,6 +8,14 @@ namespace
     constexpr int footerHeight = 30;
     constexpr int gap = 14;
     constexpr int titleHeight = 40;
+
+    rba::ActivationStyle activationStyle (juce::Colour warning)
+    {
+        rba::ActivationStyle s { Theme::bg, Theme::surface, Theme::raised, Theme::line, Theme::text, Theme::muted, Theme::faint,
+                                 Theme::brandBlue, Theme::brandTop, Theme::brandBottom, Theme::brandCyan, warning, {} };
+        s.drawLogo = [] (juce::Graphics& g, juce::Rectangle<float> area) { drawBrandMark (g, area); };
+        return s;
+    }
 }
 
 //==============================================================================
@@ -25,6 +33,7 @@ ChromaView::ChromaView (ChromaProcessor& p)
       keyPowerAttachment (p.apvts, ParamID::keyOn, keyPower),
       keySource (*p.apvts.getParameter (ParamID::keySource), { "External", "Freq Key" }, Theme::key),
       licence (*p.licence),
+      licenceBadge (*p.licence, activationStyle (Theme::characterColour (0))),
       presets (p.apvts, p.history)
 {
     for (auto* c : std::initializer_list<juce::Component*> { &dial, &grMeter, &inMeter, &outMeter, &input, &output, &attack, &release,
@@ -65,23 +74,17 @@ ChromaView::ChromaView (ChromaProcessor& p)
     processor.history.addChangeListener (this);
     updateHistoryButtons();
 
-    if (LicenseConfig::builtIn)
-    {
-        addAndMakeVisible (licenceBadge);
-        licenceBadge.onClick = [this] { showActivation (true); };
-        licence.addChangeListener (this);
-        changeListenerCallback (nullptr);
+    addAndMakeVisible (licenceBadge);
+    licenceBadge.onClick = [this] { showActivation (true); };
 
-        const auto licenceState = licence.getStatus().state;
-        if (licenceState != LicenseManager::State::licensed && licenceState != LicenseManager::State::trial)
-            showActivation (true);
-    }
+    // Ask straight away whenever Chroma is not activated on this computer.
+    if (! licence.isActivated())
+        showActivation (true);
 }
 
 ChromaView::~ChromaView()
 {
     processor.history.removeChangeListener (this);
-    licence.removeChangeListener (this);
 }
 
 PillToggle& ChromaView::addPill (const char* paramID, const juce::String& text, juce::Colour accent)
@@ -108,11 +111,7 @@ void ChromaView::applyCharacterColour (int character)
 void ChromaView::changeListenerCallback (juce::ChangeBroadcaster* source)
 {
     if (source == &processor.history)
-    {
         updateHistoryButtons();
-        return;
-    }
-    licenceBadge.setStatus (licence.getStatus());
 }
 
 void ChromaView::updateHistoryButtons()
@@ -145,7 +144,7 @@ void ChromaView::showActivation (bool show)
         activation.reset();
         return;
     }
-    activation = std::make_unique<ActivationPanel> (licence);
+    activation = std::make_unique<rba::ActivationPanel> (licence, activationStyle (Theme::characterColour (0)));
     activation->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<ChromaView> (this)]
                                                                      { if (safe != nullptr) safe->showActivation (false); }); };
     addAndMakeVisible (*activation);
@@ -280,8 +279,7 @@ void ChromaView::resized()
     }
     r = r.reduced (margin, 0);
 
-    if (LicenseConfig::builtIn)
-        licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
+    licenceBadge.setBounds (header.removeFromRight (124).withSizeKeepingCentre (124, 26));
     if (activation != nullptr) activation->setBounds (getLocalBounds());
     if (manual != nullptr)     manual->setBounds (getLocalBounds());
 

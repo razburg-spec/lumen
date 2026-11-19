@@ -3,7 +3,7 @@
 #include "PluginProcessor.h"
 #include "gui/RbaLookAndFeel.h"
 #include "gui/ChromaWidgets.h"
-#include "gui/ActivationPanel.h"
+#include <rba/ActivationPanel.h>
 #include "gui/Toolbar.h"
 #include <rba/UpdateBanner.h>
 
@@ -50,9 +50,9 @@ private:
     PillToggle* listen = nullptr;
     int lastKeyState = -1;
 
-    LicenseManager& licence;
-    LicenceBadge licenceBadge;
-    std::unique_ptr<ActivationPanel> activation;
+    rba::Activation& licence;
+    rba::ActivationBadge licenceBadge;
+    std::unique_ptr<rba::ActivationPanel> activation;
 
     PresetBar presets;
     ToolButton undoButton { "Undo", ToolButton::Glyph::undo }, redoButton { "Redo", ToolButton::Glyph::redo },

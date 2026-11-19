@@ -2,6 +2,7 @@
 #include "../Source/dsp/PrismEngine.h"
 #include <cstdio>
 #include <random>
+#include <memory>
 
 static int failures = 0;
 
@@ -23,7 +24,8 @@ static double designDb (int band, PrismEngine::BandParams p, double sr, double h
 // Plays a sine through the engine and returns the gain in dB (after the settle time).
 static double sineDb (PrismEngine::Params params, double sr, double hz, float amp = 0.25f)
 {
-    PrismEngine e;
+    auto eHolder = std::make_unique<PrismEngine>();   // heap: the analyzer taps are large (Windows has a 1 MB stack)
+    auto& e = *eHolder;
     const int block = 256, total = (int) sr;   // 1 s
     e.prepare (sr, block, 2);
     juce::AudioBuffer<float> buf (2, block);
@@ -68,7 +70,8 @@ int main()
 
     // 1. Defaults are bit-exact.
     {
-        PrismEngine e;
+        auto eHolder = std::make_unique<PrismEngine>();   // heap: the analyzer taps are large (Windows has a 1 MB stack)
+        auto& e = *eHolder;
         e.prepare (48000.0, 512, 2);
         juce::AudioBuffer<float> buf (2, 512), ref (2, 512);
         std::mt19937 rng (1);
@@ -155,7 +158,8 @@ int main()
         p.bands[2].freq = 1000.0f;
         p.bands[0].on = true;            // low cut 24 dB @ 80 Hz
         const double sr = 48000;
-        PrismEngine e;
+        auto eHolder = std::make_unique<PrismEngine>();   // heap: the analyzer taps are large (Windows has a 1 MB stack)
+        auto& e = *eHolder;
         const int block = 256;
         e.prepare (sr, block, 2);
         e.loadLinearIr (PrismEngine::buildLinearIr (p, sr));
@@ -189,7 +193,8 @@ int main()
         // Impulse: the peak of a flat filter sits exactly at the reported latency, at unity.
         auto flat = defaults();
         flat.linear = true;
-        PrismEngine f;
+        auto fHolder = std::make_unique<PrismEngine>();   // heap: the analyzer taps are large (Windows has a 1 MB stack)
+        auto& f = *fHolder;
         f.prepare (sr, block, 1);
         f.loadLinearIr (PrismEngine::buildLinearIr (flat, sr));
         const int lat = PrismEngine::linearLatency (sr);
@@ -215,7 +220,8 @@ int main()
             auto p = defaults();
             p.bands[(size_t) band].freq = bandHz;
             p.bands[(size_t) band].type = type;
-            PrismEngine e;
+            auto eHolder = std::make_unique<PrismEngine>();   // heap: the analyzer taps are large (Windows has a 1 MB stack)
+            auto& e = *eHolder;
             e.prepare (sr, 256, 2);
             e.solo.band.store (band);
             juce::AudioBuffer<float> buf (2, 256);
@@ -258,7 +264,8 @@ int main()
     {
         const double sr = 48000;
         const int block = 128;
-        PrismEngine e;
+        auto eHolder = std::make_unique<PrismEngine>();   // heap: the analyzer taps are large (Windows has a 1 MB stack)
+        auto& e = *eHolder;
         e.prepare (sr, block, 1);
         auto p = defaults();
         p.linear = true;
@@ -292,7 +299,8 @@ int main()
 
     // 8. Torture: random settings changed every block, including band switches. Must stay finite and bounded.
     {
-        PrismEngine e;
+        auto eHolder = std::make_unique<PrismEngine>();   // heap: the analyzer taps are large (Windows has a 1 MB stack)
+        auto& e = *eHolder;
         const double sr = 44100;
         e.prepare (sr, 64, 2);
         juce::AudioBuffer<float> buf (2, 64);
